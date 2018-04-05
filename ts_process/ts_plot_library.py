@@ -47,9 +47,9 @@ def plot_overlay_timeseries(args, filenames, stations,
             orientation = str(int(orientation))
 
         # Set up titles
-        title_acc = "Acceleration - %s" % (orientation)
-        title_vel = "Velocity - %s" % (orientation)
-        title_dis = "Displacement - %s" % (orientation)
+        title_acc = "Acceleration : %s" % (orientation)
+        title_vel = "Velocity : %s" % (orientation)
+        title_dis = "Displacement : %s" % (orientation)
 
         # cutting signal by bounds
         c_displs = [dis[min_i:max_i] for dis, min_i, max_i in zip(displs,
@@ -151,7 +151,7 @@ def comparison_plot(args, filenames, stations,
         vels = [signal.vel for signal in signals]
         accs = [signal.acc for signal in signals]
         # Get title
-        title = signals[0].orientation
+        title = "Velocity component : %s" % (signals[0].orientation)
         if type(title) is not str:
             title = str(int(title))
 
