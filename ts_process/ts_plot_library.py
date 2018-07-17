@@ -1,5 +1,19 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
+Copyright 2010-2018 University Of Southern California
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
 Library of functions to plot timeseries
 """
 from __future__ import division, print_function
@@ -8,7 +22,7 @@ import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-from ts_library import get_periods, get_points, FAS, cal_acc_response
+from ts_library import get_points, FAS, calculate_rd50
 
 def plot_overlay_timeseries(args, filenames, stations,
                             output_file, plot_title=None):
@@ -105,9 +119,9 @@ def plot_overlay_timeseries(args, filenames, stations,
 
     # All done, save plot
     if output_file.lower().endswith(".png"):
-        fmt='png'
+        fmt =' png'
     elif output_file.lower().endswith(".pdf"):
-        fmt='pdf'
+        fmt = 'pdf'
     else:
         print("[ERROR]: Unknown format!")
         sys.exit(-1)
@@ -142,14 +156,22 @@ def comparison_plot(args, filenames, stations,
     min_is = [int(xtmin/delta_t) for delta_t in delta_ts]
     max_is = [int(xtmax/delta_t) for delta_t in delta_ts]
 
-    period = get_periods(tmin, tmax)
+    rd50s = [calculate_rd50(station,
+                            min_i,
+                            max_i,
+                            tmin,
+                            tmax,
+                            cut_flag) for station, min_i, max_i in zip(stations,
+                                                                       min_is,
+                                                                       max_is)]
 
     f, axarr = plt.subplots(nrows=3, ncols=3, figsize=(14, 9))
     for i in range(0, 3):
         signals = [station[i] for station in stations]
         samples = [signal.samples for signal in signals]
         vels = [signal.vel for signal in signals]
-        accs = [signal.acc for signal in signals]
+        psas = [psa[i+1] for psa in rd50s]
+        periods = [psa[0] for psa in rd50s]
         # Get title
         title = "Velocity component : %s" % (signals[0].orientation)
         if type(title) is not str:
@@ -161,11 +183,8 @@ def comparison_plot(args, filenames, stations,
                       ((sample - 1) * delta_t))
                 sys.exit(1)
 
-        # cutting signal by bounds
+        # cutting velocity signal by bounds
         c_vels = [vel[min_i:max_i] for vel, min_i, max_i in zip(vels,
-                                                                min_is,
-                                                                max_is)]
-        c_accs = [acc[min_i:max_i] for acc, min_i, max_i in zip(accs,
                                                                 min_is,
                                                                 max_is)]
         times = [np.arange(xtmin, xtmax, delta_t) for delta_t in delta_ts]
@@ -179,7 +198,6 @@ def comparison_plot(args, filenames, stations,
                                      xfmax,
                                      3) for c_vel, delta_t in zip(c_vels,
                                                                   delta_ts)])
-            rsps = cal_acc_response(period, c_accs, delta_ts)
         else:
             freqs, fas_s = zip(*[FAS(vel,
                                      delta_t,
@@ -188,7 +206,6 @@ def comparison_plot(args, filenames, stations,
                                      xfmax,
                                      3) for vel, delta_t in zip(vels,
                                                                 delta_ts)])
-            rsps = cal_acc_response(period, accs, delta_ts)
 
         axarr[i][0] = plt.subplot2grid((3, 4), (i, 0), colspan=2, rowspan=1)
         axarr[i][0].set_title(title)
@@ -217,11 +234,11 @@ def comparison_plot(args, filenames, stations,
         plt.xlim(tmp_xfmin, xfmax)
 
         axarr[i][2] = plt.subplot2grid((3, 4), (i, 3), rowspan=1, colspan=1)
-        axarr[i][2].set_title("Response Spectra")
+        axarr[i][2].set_title("PSA(g) versus T(s)")
         axarr[i][2].set_xscale('log')
         axarr[i][2].grid(True)
-        for rsp, style in zip(rsps, styles):
-            axarr[i][2].plot(period, rsp, style)
+        for psa, period, style in zip(psas, periods, styles):
+            axarr[i][2].plot(period, psa, style)
 
         plt.xlim(tmin, tmax)
 

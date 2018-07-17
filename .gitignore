@@ -99,3 +99,14 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# C and Fortran intermediate files
+*.o
+*.mod
+bin/
+*.version
+*.a
+
+# RotD50 binary
+*rotd50
+!rotd50/

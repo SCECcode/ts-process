@@ -1,15 +1,43 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
+Copyright 2010-2018 University Of Southern California
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
 Library of functions to process timeseries
 """
 from __future__ import division, print_function
 
+import os
 import sys
 import math
+import atexit
+import shutil
+import tempfile
 import numpy as np
+import subprocess
 from scipy import interpolate
 from scipy.signal import sosfiltfilt, filtfilt, ellip, butter, kaiser
 from scipy.integrate import cumtrapz
+
+# This is used to convert from accel in g to accel in cm/s/s
+G2CMSS = 980.665 # Convert g to cm/s/s
+
+def cleanup(dir_name):
+    """
+    This function removes the temporary directory
+    """
+    shutil.rmtree(dir_name)
 
 class TimeseriesComponent(object):
     """
@@ -67,7 +95,7 @@ def calculate_distance(epicenter, st_loc):
     c = 2 * math.asin(math.sqrt(a))
 
     # Radius of earth in kilometers
-    r = 6371
+    r = 6371.0
 
     return c * r
 #end calculate_distance
@@ -86,6 +114,169 @@ def get_periods(tmin, tmax):
 
     return periods
 #end get_periods
+
+def write_peer_acc_file(peer_fn, acc_ts, delta_t):
+    """
+    Write acc timeseries into a peer-format file
+    """
+    # Number of header lines needed in PEER file
+    PEER_HEADER_LINES = 6
+
+    # Adjust the header lines needed in the PEER format
+    header_lines = []
+    while len(header_lines) <= (PEER_HEADER_LINES - 2):
+        header_lines.append("\n")
+
+    output_file = open(peer_fn, 'w')
+    # Write header
+    for line in header_lines[0:(PEER_HEADER_LINES - 2)]:
+        output_file.write(line)
+    output_file.write("Acceleration in g\n")
+    output_file.write("  %d   %1.6f   NPTS, DT\n" %
+                      (len(acc_ts), delta_t))
+    for index, elem in enumerate(acc_ts):
+        output_file.write("% 12.7E " % (elem / G2CMSS))
+        if (index % 5) == 4:
+            output_file.write("\n")
+    output_file.write("\n")
+    output_file.close()
+
+def run_rotd50(workdir,
+               peer_input_1_file, peer_input_2_file,
+               output_rotd50_file):
+    """
+    Runs the RotD50 code using the inputs provided
+    """
+    # Make sure we don't have absolute path names
+    peer_input_1_file = os.path.basename(peer_input_1_file)
+    peer_input_2_file = os.path.basename(peer_input_2_file)
+    output_rotd50_file = os.path.basename(output_rotd50_file)
+    logfile = "rotd50.log"
+
+    bin_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+    # Save cwd, change back to it at the end
+    old_cwd = os.getcwd()
+    os.chdir(workdir)
+
+    # Make sure we remove the output files first or Fortran will
+    # complain if they already exist
+    try:
+        os.unlink(output_rotd50_file)
+    except OSError:
+        pass
+
+    #
+    # write config file for rotd50 program
+    rd50_conf = open("rotd50_inp.cfg", 'w')
+    # This flag indicates inputs acceleration
+    rd50_conf.write("2 interp flag\n")
+    # This flag indicate we are processing two input files
+    rd50_conf.write("1 Npairs\n")
+    # Number of headers in the file
+    rd50_conf.write("6 Nhead\n")
+    rd50_conf.write("%s\n" % peer_input_1_file)
+    rd50_conf.write("%s\n" % peer_input_2_file)
+    rd50_conf.write("%s\n" % output_rotd50_file)
+    # Close file
+    rd50_conf.close()
+
+    progstring = ("%s >> %s 2>&1" %
+                  (os.path.join(bin_dir, "rotd50", "rotd50"), logfile))
+    try:
+        proc = subprocess.Popen(progstring, shell=True)
+        proc.wait()
+    except KeyboardInterrupt:
+        print("Interrupted!")
+        sys.exit(1)
+    except:
+        print("Unexpected error returned from Subprocess call: ",
+              sys.exc_info()[0])
+
+    # Restore working directory
+    os.chdir(old_cwd)
+
+def read_rd50(input_rd50_file):
+    """
+    Reads RotD50 input file
+    """
+    periods = np.empty(0)
+    comp1 = np.empty(0)
+    comp2 = np.empty(0)
+    input_file = open(input_rd50_file, 'r')
+    for line in input_file:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            continue
+        items = line.split()
+        items = [float(item) for item in items]
+        periods = np.append(periods, items[0])
+        comp1 = np.append(comp1, items[1])
+        comp2 = np.append(comp2, items[2])
+    input_file.close()
+
+    return periods, comp1, comp2
+
+def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag):
+    """
+    Calculates the RotD50 for a given station, if cut_flag is TRUE,
+    trims the acc timeseries using min_i and max_i, returns data
+    for periods within tmin, tmax
+    """
+    comp_h1 = station[0].acc
+    comp_h2 = station[1].acc
+    comp_v = station[2].acc
+    delta_ts = [item.dt for item in station]
+    peer_fns = ["hor1.acc.peer", "hor2.acc.peer", "ver.acc.peer"]
+    rotd50_h_file = "station_h.rd50"
+    rotd50_v_file = "station_v.rd50"
+
+    # Trim timeseries if needed
+    if cut_flag:
+        comp_h1 = comp_h1[min_i:max_i]
+        comp_h2 = comp_h2[min_i:max_i]
+        comp_v = comp_v[min_i:max_i]
+
+    # Create temp Directory
+    temp_dir = tempfile.mkdtemp()
+    # And clean up later
+    atexit.register(cleanup, temp_dir)
+
+    # Write PEER tempfiles
+    for peer_fn, comp, delta_t in zip(peer_fns,
+                                      [comp_h1,
+                                       comp_h2,
+                                       comp_v],
+                                      delta_ts):
+        write_peer_acc_file(os.path.join(temp_dir, peer_fn),
+                            comp, delta_t)
+
+    # Calculate RotD50 outputs
+    run_rotd50(temp_dir, peer_fns[0], peer_fns[1], rotd50_h_file)
+    run_rotd50(temp_dir, peer_fns[2], peer_fns[2], rotd50_v_file)
+
+    periods, comp1_rd50, comp2_rd50 = read_rd50(os.path.join(temp_dir,
+                                                             rotd50_h_file))
+    _, compv_rd50, _ = read_rd50(os.path.join(temp_dir, rotd50_v_file))
+
+    # Find only periods we want
+    try:
+        idx_min = np.nonzero(periods-tmin >= 0)[0][0]
+    except:
+        idx_min = 0
+    try:
+        idx_max = np.nonzero(periods-tmax > 0)[0][0]
+    except:
+        idx_max = len(periods)
+
+    periods = periods[idx_min:idx_max]
+    comp1_rd50 = comp1_rd50[idx_min:idx_max]
+    comp2_rd50 = comp2_rd50[idx_min:idx_max]
+    compv_rd50 = compv_rd50[idx_min:idx_max]
+
+    return [periods, comp1_rd50, comp2_rd50, compv_rd50]
 
 def get_points(samples):
     # points is the least base-2 number that is greater than max samples
