@@ -93,7 +93,7 @@ def read_smc_v2(input_file):
     """
     record_list = []
 
-    # loads station into a string
+    # Loads station into a string
     try:
         fp = open(input_file, 'r')
     except IOError as e:
@@ -107,32 +107,31 @@ def read_smc_v2(input_file):
     channels = fp.read()
     fp.close()
 
-    # splits the string by channels
+    # Splits the string by channels
     channels = channels.split('/&')
     del(channels[len(channels)-1])
 
-    # splits the channels
+    # Splits the channels
     for i in range(len(channels)):
         channels[i] = channels[i].split('\n')
 
-    # clean the first row in all but the first channel
+    # Clean the first row in all but the first channel
     for i in range(1, len(channels)):
         del channels[i][0]
 
     for i in range(len(channels)):
         tmp = channels[i][0].split()
-        # check this is the uncorrected acceleration data
+        # Check this is the uncorrected acceleration data
         ctype = (tmp[0] + " " + tmp[1]).lower()
         if ctype != "corrected accelerogram":
             print("[ERROR]: processing corrected accelerogram ONLY.")
             return False
 
-        # get network code and station id
+        # Get network code and station id
         network = input_file.split('/')[-1].split('.')[0][0:2].upper()
         station_id = input_file.split('/')[-1].split('.')[0][2:].upper()
 
-        # get location's latitude and longitude
-        #print(channels[i][5])
+        # Get location's latitude and longitude
         tmp = channels[i][5].split()
         latitude = tmp[3][:-1]
         longitude = tmp[4]
@@ -158,10 +157,15 @@ def read_smc_v2(input_file):
         elif orientation == 600:
             orientation = "down"
 
-        # get station name
+        # Get filtering information
+        tmp = channels[i][14].split()
+        high_pass = float(tmp[8])
+        low_pass = float(tmp[10])
+
+        # Get station name
         station_name = channels[i][6][0:40].strip()
 
-        # get date and time; set to fixed format
+        # Get date and time; set to fixed format
         start_time = channels[i][4][37:80].split()
         try:
             date = start_time[2][:-1]
@@ -182,19 +186,19 @@ def read_smc_v2(input_file):
         # Put it all together
         time = "%s:%s:%s.%s %s" % (hour, minute, seconds, fraction, tzone)
 
-        # get number of samples and dt
+        # Get number of samples and dt
         tmp = channels[i][45].split()
         samples = int(tmp[0])
         delta_t = float(tmp[8])
 
-        # get signals' data
+        # Get signals' data
         tmp = channels[i][45:]
         a_signal = str()
         v_signal = str()
         d_signal = str()
 
         for s in tmp:
-            # detecting separate line and get data type
+            # Detecting separate line and get data type
             if "points" in s.lower():
                 line = s.split()
                 if line[3].lower() == "accel" or line[3].lower() == "acc":
@@ -206,7 +210,7 @@ def read_smc_v2(input_file):
                 else:
                     dtype = "unknown"
 
-            # processing data
+            # Processing data
             else:
                 if dtype == 'a':
                     a_signal += s
@@ -231,6 +235,8 @@ def read_smc_v2(input_file):
     station_metadata['time'] = time
     station_metadata['longitude'] = longitude
     station_metadata['latitude'] = latitude
+    station_metadata['high_pass'] = high_pass
+    station_metadata['low_pass'] = low_pass
 
     return record_list, station_metadata
 
@@ -333,15 +339,19 @@ def write_bbp(station, station_metadata, destination):
                      (station_metadata['longitude']))
         out_fp.write("#     lat= %s\n" %
                      (station_metadata['latitude']))
+        out_fp.write("#      hp= %s\n" %
+                     (station_metadata['high_pass']))
+        out_fp.write("#      lp= %s\n" %
+                     (station_metadata['low_pass']))
         out_fp.write("#   units= %s\n" % (data[5]))
         out_fp.write("#\n")
         out_fp.write("# Data fields are TAB-separated\n")
         out_fp.write("# Column 1: Time (s)\n")
-        out_fp.write("# Column 2: N/S component ground "
+        out_fp.write("# Column 2: H1 component ground "
                      "%s (+ is 000)\n" % (data[4]))
-        out_fp.write("# Column 3: E/W component ground "
+        out_fp.write("# Column 3: H2 component ground "
                      "%s (+ is 090)\n" % (data[4]))
-        out_fp.write("# Column 4: U/D component ground "
+        out_fp.write("# Column 4: V component ground "
                      "%s (+ is upward)\n" % (data[4]))
         out_fp.write("#\n")
 
