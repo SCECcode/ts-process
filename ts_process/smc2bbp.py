@@ -42,7 +42,7 @@ import numpy as np
 
 # Import seismtools needed classes
 from ts_library import TimeseriesComponent, baseline_function, \
-    rotate_timeseries, check_station_data
+    rotate_timeseries, check_station_data, integrate, G2CMSS
 
 def parse_arguments():
     """
@@ -86,6 +86,109 @@ def read_smc_v1(input_file):
     """
     Reads and processes a V1 file
     """
+    record_list = []
+
+    # Loads station into a string
+    try:
+        fp = open(input_file, 'r')
+    except IOError as e:
+        print("[ERROR]: opening input file %s" % (input_file))
+        return False
+
+    # Print status message
+    print("[READING]: %s..." % (input_file))
+
+    # Read data
+    channels = fp.read()
+    fp.close()
+
+    # Splits the string by channels
+    channels = channels.split('/&')
+    del(channels[len(channels)-1])
+
+    # Splits the channels
+    for i in range(len(channels)):
+        channels[i] = channels[i].split('\n')
+
+    # Clean the first row in all but the first channel
+    for i in range(1, len(channels)):
+        del channels[i][0]
+
+    for i in range(len(channels)):
+        # Check this is the uncorrected acceleration data
+        ctype = channels[i][0][0:24].lower()
+        if ctype != "uncorrected accelerogram":
+            print("[ERROR]: processing uncorrected accelerogram ONLY.")
+            return False
+        else:
+            dtype = 'a'
+
+        network = input_file.split('/')[-1].split('.')[0][0:2].upper()
+        station_id = input_file.split('/')[-1].split('.')[0][2:].upper()
+
+        # Get location's latitude and longitude
+        tmp = channels[i][4].split()
+        latitude = tmp[3][:-1]
+        longitude = tmp[4]
+
+        # Get station name
+        station_name = channels[i][5][0:40].strip()
+
+        # Get orientation, convert to int if it's digit
+        tmp = channels[i][6].split()
+        orientation = tmp[2]
+        if orientation.isdigit():
+            orientation = float(int(orientation))
+            if orientation == 360:
+                orientation = 0.0
+        else:
+            orientation = orientation.lower()
+
+        # Get date and time; set to fixed format
+        start_time = channels[i][3][37:80].split()
+        date = start_time[2][:-1]
+
+        tmp = channels[i][14].split()
+        hour = tmp[0]
+        minute = tmp[1]
+        seconds = tmp[2]
+        fraction = tmp[3]
+        tzone = channels[i][3].split()[-2]
+        time = "%s:%s:%s.%s %s" % (hour, minute, seconds, fraction, tzone)
+
+        # Get number of samples and dt
+        tmp = channels[i][27].split()
+        samples = int(tmp[0])
+        delta_t = 1.0 / int(tmp[4])
+
+        # Get signals' data
+        tmp = channels[i][28:]
+        signal = str()
+        for s in tmp:
+            signal += s
+        acc_data_g = read_data(signal)
+        # Convert from g to cm/s/s
+        acc_data = acc_data_g * G2CMSS
+        # Now integrate to get velocity and displacement
+        vel_data = integrate(acc_data, delta_t)
+        dis_data = integrate(vel_data, delta_t)
+
+        print("[PROCESSING]: Found component: %s" % (orientation))
+        record_list.append(TimeseriesComponent(samples, delta_t, orientation,
+                                               acc_data, vel_data, dis_data))
+
+    station_metadata = {}
+    station_metadata['network'] = network
+    station_metadata['station_id'] = station_id
+    station_metadata['type'] = "V1"
+    station_metadata['date'] = date
+    station_metadata['time'] = time
+    station_metadata['longitude'] = longitude
+    station_metadata['latitude'] = latitude
+    station_metadata['high_pass'] = -1
+    station_metadata['low_pass'] = -1
+
+    return record_list, station_metadata
 
 def read_smc_v2(input_file):
     """
@@ -121,7 +224,7 @@ def read_smc_v2(input_file):
 
     for i in range(len(channels)):
         tmp = channels[i][0].split()
-        # Check this is the uncorrected acceleration data
+        # Check this is the corrected acceleration data
         ctype = (tmp[0] + " " + tmp[1]).lower()
         if ctype != "corrected accelerogram":
             print("[ERROR]: processing corrected accelerogram ONLY.")
