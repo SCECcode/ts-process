@@ -136,7 +136,7 @@ def plot_overlay_timeseries(args, filenames, stations,
 
     # All done, save plot
     if output_file.lower().endswith(".png"):
-        fmt =' png'
+        fmt = 'png'
     elif output_file.lower().endswith(".pdf"):
         fmt = 'pdf'
     else:
@@ -160,7 +160,8 @@ def comparison_plot(args, filenames, stations,
         sys.exit(-1)
 
     delta_ts = [station[0].dt for station in stations]
-    files = [os.path.basename(filename) for filename in filenames]
+    files_vel = [os.path.basename(filename) for filename in filenames]
+    files_acc = [filename.replace(".vel.", ".acc.") for filename in files_vel]
 
     xtmin = args.xmin
     xtmax = args.xmax
@@ -168,7 +169,7 @@ def comparison_plot(args, filenames, stations,
     xfmax = args.xfmax
     tmin = args.tmin
     tmax = args.tmax
-    cut_flag = args.cut
+    acc_flag = args.acc_plots
 
     min_is = [int(xtmin/delta_t) for delta_t in delta_ts]
     max_is = [int(xtmax/delta_t) for delta_t in delta_ts]
@@ -178,19 +179,27 @@ def comparison_plot(args, filenames, stations,
                             max_i,
                             tmin,
                             tmax,
-                            cut_flag) for station, min_i, max_i in zip(stations,
-                                                                       min_is,
-                                                                       max_is)]
+                            False) for station, min_i, max_i in zip(stations,
+                                                                    min_is,
+                                                                    max_is)]
 
     f, axarr = plt.subplots(nrows=3, ncols=3, figsize=(14, 9))
     for i in range(0, 3):
         signals = [station[i] for station in stations]
         samples = [signal.samples for signal in signals]
         vels = [signal.vel for signal in signals]
+        accs = [signal.acc for signal in signals]
         psas = [psa[i+1] for psa in rd50s]
         periods = [psa[0] for psa in rd50s]
         # Get title
-        title = "Velocity component : %s" % (signals[0].orientation)
+        if type(signals[0].orientation) is not str:
+            suffix = "%s Deg." % (signals[0].orientation)
+        else:
+            suffix = "%s" % (signals[0].orientation)
+        if acc_flag:
+            title = "Acc. (cm/s/s), %s" % (suffix)
+        else:
+            title = "Vel. (cm/s), %s" % (suffix)
         if type(title) is not str:
             title = str(int(title))
 
@@ -200,21 +209,24 @@ def comparison_plot(args, filenames, stations,
                       ((sample - 1) * delta_t))
                 sys.exit(1)
 
-        # cutting velocity signal by bounds
+        # cutting signal by bounds
         c_vels = [vel[min_i:max_i] for vel, min_i, max_i in zip(vels,
+                                                                min_is,
+                                                                max_is)]
+        c_accs = [acc[min_i:max_i] for acc, min_i, max_i in zip(accs,
                                                                 min_is,
                                                                 max_is)]
         times = [np.arange(xtmin, xtmax, delta_t) for delta_t in delta_ts]
         points = get_points(samples)
 
-        if cut_flag:
-            freqs, fas_s = zip(*[FAS(c_vel,
+        if acc_flag:
+            freqs, fas_s = zip(*[FAS(acc,
                                      delta_t,
                                      points,
                                      xfmin,
                                      xfmax,
-                                     3) for c_vel, delta_t in zip(c_vels,
-                                                                  delta_ts)])
+                                     3) for acc, delta_t in zip(accs,
+                                                                delta_ts)])
         else:
             freqs, fas_s = zip(*[FAS(vel,
                                      delta_t,
@@ -228,15 +240,28 @@ def comparison_plot(args, filenames, stations,
         axarr[i][0].set_title(title)
         axarr[i][0].grid(True)
         styles = all_styles[0:len(times)]
-        for timeseries, c_vel, style in zip(times, c_vels, styles):
-            axarr[i][0].plot(timeseries, c_vel, style)
+        if acc_flag:
+            for timeseries, c_acc, style in zip(times, c_accs, styles):
+                axarr[i][0].plot(timeseries, c_acc, style)
+        else:
+            for timeseries, c_vel, style in zip(times, c_vels, styles):
+                axarr[i][0].plot(timeseries, c_vel, style)
 
         if i == 0:
-            plt.legend(files, prop={'size':8})
+            if acc_flag:
+                plt.legend(files_acc, prop={'size':8})
+            else:
+                plt.legend(files_vel, prop={'size':8})
         plt.xlim(xtmin, xtmax)
 
+        if i == 2:
+            axarr[i][0].set_xlabel("Time (s)")
+
         axarr[i][1] = plt.subplot2grid((3, 4), (i, 2), rowspan=1, colspan=1)
-        axarr[i][1].set_title('Fourier Amplitude Spectra')
+        if acc_flag:
+            axarr[i][1].set_title('Acc. FAS (cm/s), %s' % (suffix))
+        else:
+            axarr[i][1].set_title('Vel. FAS (cm), %s' % (suffix))
         axarr[i][1].grid(True, which='both')
         axarr[i][1].set_xscale('log')
         axarr[i][1].set_yscale('log')
@@ -250,14 +275,20 @@ def comparison_plot(args, filenames, stations,
             tmp_xfmin = xfmin
         plt.xlim(tmp_xfmin, xfmax)
 
+        if i == 2:
+            axarr[i][1].set_xlabel("Freq (Hz)")
+
         axarr[i][2] = plt.subplot2grid((3, 4), (i, 3), rowspan=1, colspan=1)
-        axarr[i][2].set_title("PSA(g) versus T(s)")
+        axarr[i][2].set_title("PSA (g), %s" % (suffix))
         axarr[i][2].set_xscale('log')
         axarr[i][2].grid(True)
         for psa, period, style in zip(psas, periods, styles):
             axarr[i][2].plot(period, psa, style)
 
         plt.xlim(tmin, tmax)
+
+        if i == 2:
+            axarr[i][2].set_xlabel("Period (s)")
 
     # Make nice plots with tight_layout
     f.tight_layout()

@@ -46,6 +46,11 @@ import subprocess
 from scipy import interpolate
 from scipy.signal import sosfiltfilt, filtfilt, ellip, butter, kaiser
 from scipy.integrate import cumtrapz
+import matplotlib as mpl
+if mpl.get_backend() != 'agg':
+    mpl.use('Agg') # Disables use of Tk/X11
+import matplotlib.pyplot as plt
+import pylab
 
 # This is used to convert from accel in g to accel in cm/s/s
 G2CMSS = 980.665 # Convert g to cm/s/s
@@ -236,7 +241,7 @@ def read_rd50(input_rd50_file):
 
     return periods, comp1, comp2
 
-def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag):
+def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag=False):
     """
     Calculates the RotD50 for a given station, if cut_flag is TRUE,
     trims the acc timeseries using min_i and max_i, returns data
@@ -550,7 +555,7 @@ def rotate_timeseries(station, rotation_angle):
 
     if rotation_angle < 0 or rotation_angle > 360:
         print("[ERROR]: Invalid rotation angle: %f" % (rotation_angle))
-        sys.exit(-1)
+        return False
 
     # Make sure channels are ordered properly
     if station[0].orientation > station[1].orientation:
@@ -623,10 +628,15 @@ def rotate_timeseries(station, rotation_angle):
 
 def filter_timeseries(timeseries, family, btype,
                       N=5, rp=0.1, rs=100,
-                      fmin=0.0, fmax=0.0, Wn=None):
+                      fmin=0.0, fmax=0.0, Wn=None,
+                      debug=False):
     """
     Function that filters acc/vel/dis of a timeseries component
     """
+    if debug:
+        print("[INFO]: Filtering timeseries: %s - %s - fmin=%.2f, fmax=%.2f" %
+              (family, btype, fmin, fmax))
+
     timeseries.acc = filter_data(timeseries.acc, timeseries.dt,
                                  btype=btype, family=family,
                                  fmin=fmin, fmax=fmax,
@@ -682,44 +692,78 @@ def filter_data(data, dt, family, btype,
     return data
 # end of filter_timeseries
 
-def interp(data, samples, old_dt, new_dt):
+def interp(data, samples, old_dt, new_dt,
+           debug=False, debug_plot_base=None):
     """
-    Call interpolate on given data
+    Calls the sinc interp method
     """
-    old_t = np.arange(0, samples*old_dt, old_dt)
-    if old_t.size == samples+1:
-        old_t = old_t[:-1]
+    if debug:
+        print("[INFO]: Interpolating timeseries: old_dt: %.3f - new_dt: %.3f" %
+              (old_dt, new_dt))
 
-    f = interpolate.interp1d(old_t, data, 'linear', bounds_error=False)
+    if old_dt == new_dt:
+        # Nothing to do!
+        return data
 
-    new_t = np.arange(0, samples*old_dt, new_dt)
-    new_data = f(new_t)
+    old_times = np.arange(0, samples * old_dt, old_dt)
+    if old_times.size == samples + 1:
+        old_times = old_times[:-1]
 
-    # eliminate NaN values
-    for i in range(1, new_data.size-1):
-        if np.isnan(new_data[i]):
-            if not np.isnan(new_data[i+1]):
-                new_data[i] = (new_data[i-1] + new_data[i+1])/2
-            else:
-                new_data[i] = new_data[i-1]
+    new_times = np.arange(0, samples * old_dt, new_dt)
 
-    if np.isnan(new_data[-1]):
-        new_data[-1] = new_data[-2]
+    sinc_matrix = (np.tile(new_times, (len(old_times), 1)) -
+                   np.tile(old_times[:, np.newaxis], (1, len(new_times))))
+    new_data = np.dot(data, np.sinc(sinc_matrix / old_dt))
+
+    if debug:
+        # Save debug plot
+        output_file = "%s.png" % (debug_plot_base)
+        # Find data to plot, from t=10s until t=10s+50pts
+        old_start_idx = int(10.0 // old_dt) + 1
+        old_end_idx = old_start_idx + 50
+        if len(old_times) < old_end_idx:
+            print("[INFO]: Not enough data to create debug plot!")
+            return new_data
+        new_start_idx = int(10.0 // new_dt) + 1
+        new_end_idx = int(old_times[old_end_idx] // new_dt) + 1
+
+        # Initialize plot
+        fig, _ = plt.subplots()
+        fig.clf()
+
+        plt.plot(old_times[old_start_idx:old_end_idx],
+                 data[old_start_idx:old_end_idx], 'o',
+                 new_times[new_start_idx:new_end_idx],
+                 new_data[new_start_idx:new_end_idx], 'x')
+        plt.grid(True)
+        plt.xlabel('Seconds')
+        plt.title(os.path.splitext(os.path.basename(output_file))[0])
+        plt.savefig(output_file, format='png',
+                    transparent=False, dpi=300)
+        pylab.close()
 
     return new_data
-# end of interp
 
-
-def process_station_dt(station, common_dt, fmax):
+def process_station_dt(station, common_dt, fmax,
+                       debug=False, debug_plots_base=None):
     """
     Process the station to set a common dt
     """
     for i in range(0, 3):
-        station[i] = process_timeseries_dt(station[i], common_dt, fmax)
+        if type(station[i].orientation) is not str:
+            debug_orientation = "%03d" % (int(station[i].orientation))
+        else:
+            debug_orientation = station[i].orientation
+        station[i] = process_timeseries_dt(station[i], common_dt,
+                                           fmax, debug=debug,
+                                           debug_plots_base="%s.%s" %
+                                           (debug_plots_base,
+                                            debug_orientation))
     return station
 #end process_station_dt
 
-def process_timeseries_dt(timeseries, new_dt, fmax):
+def process_timeseries_dt(timeseries, new_dt, fmax,
+                          debug=False, debug_plots_base=None):
     """
     Processes a timeseries:
     First filter the data using a lowpass filter using fmax,
@@ -728,18 +772,24 @@ def process_timeseries_dt(timeseries, new_dt, fmax):
     # call low_pass filter at fmax
     timeseries = filter_timeseries(timeseries, family='butter',
                                    btype='lowpass', fmax=fmax,
-                                   N=4, rp=0.1, rs=100)
+                                   N=4, rp=0.1, rs=100, debug=debug)
 
     # interpolate
     timeseries.acc = interp(timeseries.acc,
                             timeseries.samples,
-                            timeseries.dt, new_dt)
+                            timeseries.dt,
+                            new_dt, debug=debug,
+                            debug_plot_base="%s.acc" % (debug_plots_base))
     timeseries.vel = interp(timeseries.vel,
                             timeseries.samples,
-                            timeseries.dt, new_dt)
+                            timeseries.dt,
+                            new_dt, debug=debug,
+                            debug_plot_base="%s.vel" % (debug_plots_base))
     timeseries.dis = interp(timeseries.dis,
                             timeseries.samples,
-                            timeseries.dt, new_dt)
+                            timeseries.dt,
+                            new_dt, debug=debug,
+                            debug_plot_base="%s.dis" % (debug_plots_base))
 
     timeseries.samples = timeseries.acc.size
     timeseries.dt = new_dt
@@ -777,63 +827,3 @@ def check_station_data(station):
             return False
     return station
 # end of check_data
-
-def max_osc_response(acc, dt, csi, period, ini_disp, ini_vel):
-    signal_size = acc.size
-
-    # initialize numpy arrays
-    d = np.empty((signal_size))
-    v = np.empty((signal_size))
-    aa = np.empty((signal_size))
-
-    d[0] = ini_disp
-    v[0] = ini_vel
-
-    w = 2*math.pi/period
-    ww = w**2
-    csicsi = csi**2
-    dcsiw = 2*csi*w
-
-    rcsi = math.sqrt(1-csicsi)
-    csircs = csi/rcsi
-    wd = w*rcsi
-    ueskdt = -1/(ww*dt)
-    dcsiew = 2*csi/w
-    um2csi = (1-2*csicsi)/wd
-    e = math.exp(-w*dt*csi)
-    s = math.sin(wd*dt)
-    c0 = math.cos(wd*dt)
-    aa[0] = -ww*d[0]-dcsiw*v[0]
-
-    ca = e*(csircs*s+c0)
-    cb = e*s/wd
-    cc = (e*((um2csi-csircs*dt)*s-(dcsiew+dt)*c0)+dcsiew)*ueskdt
-    cd = (e*(-um2csi*s+dcsiew*c0)+dt-dcsiew)*ueskdt
-    cap = -cb*ww
-    cbp = e*(c0-csircs*s)
-    ccp = (e*((w*dt/rcsi+csircs)*s+c0)-1)*ueskdt
-    cdp = (1-ca)*ueskdt
-
-    for i in range(1, signal_size):
-        d[i] = ca*d[i-1]+cb*v[i-1]+cc*acc[i-1]+cd*acc[i]
-        v[i] = cap*d[i-1]+cbp*v[i-1]+ccp*acc[i-1]+cdp*acc[i]
-        aa[i] = -ww*d[i]-dcsiw*v[i]
-
-    maxdisp = np.amax(np.absolute(d))
-    maxvel = np.amax(np.absolute(v))
-    maxacc = np.amax(np.absolute(aa))
-
-    return maxdisp, maxvel, maxacc
-#end of max_osc_response
-
-def cal_acc_response(period, data, delta_ts):
-    """
-    # return the response for acceleration only
-    """
-    rsps = [[] for _ in delta_ts]
-    for p in period:
-        for rsp, timeseries, delta_t in zip(rsps, data, delta_ts):
-            rsp.append(max_osc_response(timeseries, delta_t, 0.05,
-                                        p, 0, 0)[-1])
-    return rsps
-# end of cal_acc_response

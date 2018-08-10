@@ -432,21 +432,23 @@ def write_bbp(station, station_metadata, destination):
             samples -= 1
 
         # Write header
-        out_fp.write("# Station: %s_%s\n" %
+        out_fp.write("#     Station= %s_%s\n" %
                      (station_metadata['network'],
                       station_metadata['station_id']))
-        out_fp.write("#    time= %s,%s\n" %
+        out_fp.write("#        time= %s,%s\n" %
                      (station_metadata['date'],
                       station_metadata['time']))
-        out_fp.write("#     lon= %s\n" %
+        out_fp.write("#         lon= %s\n" %
                      (station_metadata['longitude']))
-        out_fp.write("#     lat= %s\n" %
+        out_fp.write("#         lat= %s\n" %
                      (station_metadata['latitude']))
-        out_fp.write("#      hp= %s\n" %
+        out_fp.write("#          hp= %s\n" %
                      (station_metadata['high_pass']))
-        out_fp.write("#      lp= %s\n" %
+        out_fp.write("#          lp= %s\n" %
                      (station_metadata['low_pass']))
-        out_fp.write("#   units= %s\n" % (data[5]))
+        out_fp.write("#       units= %s\n" % (data[5]))
+        # Orientation is always 0,90,UP as we just rotated the timeseries
+        out_fp.write("# orientation= 0,90,UP\n")
         out_fp.write("#\n")
         out_fp.write("# Data fields are TAB-separated\n")
         out_fp.write("# Column 1: Time (s)\n")
@@ -484,8 +486,10 @@ def smc2bbp_process(input_file, output_dir):
         # Make sure output is valid
         if not station:
             print("[ERROR]: Processing input file: %s" % (input_file))
+            return
     else:
         print("[ERROR]: Reading input file: %s" % (input_file))
+        return
 
     # Write BBP file
     write_bbp(station, station_metadata, output_dir)

@@ -84,6 +84,9 @@ def parse_arguments():
     parser.add_argument("-c", "--cut", dest="cut",
                         default=False, action='store_true',
                         help="Cut seismogram for plotting")
+    parser.add_argument("--acc", dest="acc_plots",
+                        default=False, action='store_true',
+                        help="Generate acceleration plots instead of velocity")
 
     parser.add_argument('input_files', nargs='*')
     args = parser.parse_args()

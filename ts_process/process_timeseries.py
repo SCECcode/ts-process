@@ -41,9 +41,9 @@ import argparse
 
 from file_utilities import write_bbp, read_stamp, read_files
 from ts_library import rotate_timeseries, process_station_dt, \
-    check_station_data, filter_timeseries, seism_cutting, seism_cutting
+    check_station_data, filter_timeseries, seism_cutting, seism_appendzeros
 
-def filter_data(timeseries, frequencies):
+def filter_data(timeseries, frequencies, debug):
     """
     Filter timeseries using the frequencies specified by the user
     """
@@ -61,7 +61,7 @@ def filter_data(timeseries, frequencies):
 
     filter_timeseries(timeseries, family='butter', btype=btype,
                       fmin=fmin, fmax=fmax,
-                      N=4, rp=0.2, rs=100)
+                      N=4, rp=0.2, rs=100, debug=debug)
 
     return timeseries
 #end filter_data
@@ -162,7 +162,7 @@ def synchronize_all_stations(obs_data, stations, stamp, eqtimestamp, leading):
     return obs_data, stations
 # end of synchronize_all_stations
 
-def process(obs_file, obs_data, stations, params):
+def process(obs_file, obs_data, input_files, stations, params):
     """
     This method processes the signals in each pair of stations.
     Processing consists on scaling, rotation, decimation, alignment
@@ -170,25 +170,43 @@ def process(obs_file, obs_data, stations, params):
     obs_data: recorded data
     stations: simulation
     """
-    # rotate synthetics
-    stations = [rotate_timeseries(station,
-                                  params['azimuth']) for station in stations]
+    # Rotate synthetics
+    new_stations = []
+    for station, input_file in zip(stations, input_files):
+        if params['debug']:
+            print("[INFO]: Rotating %s - %f degrees" % (input_file,
+                                                        params['azimuth']))
+        new_station = rotate_timeseries(station, params['azimuth'])
+        new_stations.append(new_station)
+    stations = new_stations
 
-    # process signals to have the same dt
+    # Process signals to have the same dt
     if obs_data is not None:
+        debug_plots_base = os.path.join(params['outdir'],
+                                        os.path.basename(obs_file).split('.')[0])
         obs_data = process_station_dt(obs_data,
                                       params['targetdt'],
-                                      params['decifmax'])
-    stations = [process_station_dt(station,
-                                   params['targetdt'],
-                                   params['decifmax']) for station in stations]
+                                      params['decifmax'],
+                                      params['debug'],
+                                      debug_plots_base)
+    new_stations = []
+    for station, input_file in zip(stations, input_files):
+        debug_plots_base = os.path.join(params['outdir'],
+                                        os.path.basename(input_file).split('.')[0])
+        new_station = process_station_dt(station,
+                                         params['targetdt'],
+                                         params['decifmax'],
+                                         params['debug'],
+                                         debug_plots_base)
+        new_stations.append(new_station)
+    stations = new_stations
 
     # Read obs_file timestamp if needed
     stamp = None
     if obs_data is not None:
         stamp = read_stamp(obs_file)
 
-    # synchronize starting and ending time of data arrays
+    # Synchronize starting and ending time of data arrays
     obs_data, stations = synchronize_all_stations(obs_data,
                                                   stations,
                                                   stamp,
@@ -217,13 +235,17 @@ def process(obs_file, obs_data, stations, params):
             print("[ERROR]: processed simulated data contains errors!")
             sys.exit(-1)
 
-    # final filtering step
+    # Final filtering step
     if obs_data is not None:
         for i in range(0, 3):
-            obs_data[i] = filter_data(obs_data[i], params['frequencies'])
+            obs_data[i] = filter_data(obs_data[i],
+                                      params['frequencies'],
+                                      params['debug'])
     for station in stations:
         for i in range(0, 3):
-            station[i] = filter_data(station[i], params['frequencies'])
+            station[i] = filter_data(station[i],
+                                     params['frequencies'],
+                                     params['debug'])
 
     # All done
     return obs_data, stations
@@ -253,6 +275,8 @@ def parse_arguments():
                         help="frequencies to filter")
     parser.add_argument("--output-dir", dest="outdir",
                         help="output directory for the outputs")
+    parser.add_argument("--debug", dest="debug", action="store_true",
+                        help="produces debug plots and outputs steps in detail")
     parser.add_argument('input_files', nargs='*')
     args = parser.parse_args()
 
@@ -283,8 +307,8 @@ def parse_arguments():
             freqs = [float(freq) for freq in freqs]
         except ValueError:
             print("[ERROR]: Invalid frequencies!")
-        for i in range(0, len(freqs)-1):
-            if freqs[i] >= freqs[i+1]:
+        for i in range(0, len(freqs) - 1):
+            if freqs[i] >= freqs[i + 1]:
                 print("[ERROR]: Invalid sequence of sample rates!")
         params['frequencies'] = freqs
 
@@ -319,6 +343,8 @@ def parse_arguments():
     else:
         params['leading'] = args.leading
 
+    params['debug'] = args.debug is not None
+
     return obs_file, files, params
 
 def process_main():
@@ -332,17 +358,19 @@ def process_main():
     obs_data, stations = read_files(obs_file, input_files)
 
     # Process signals
-    obs_data, stations = process(obs_file, obs_data, stations, params)
+    obs_data, stations = process(obs_file, obs_data,
+                                 input_files, stations,
+                                 params)
 
     # Write processed files
     if obs_data is not None:
         obs_file_out = os.path.join(params['outdir'],
-                                    "p-%s" % obs_file.split('/')[-1])
+                                    "p-%s" % os.path.basename(obs_file))
         write_bbp(obs_file, obs_file_out, obs_data)
 
     for input_file, station in zip(input_files, stations):
         out_file = os.path.join(params['outdir'],
-                                "p-%s" % input_file.split('/')[-1])
+                                "p-%s" % os.path.basename(input_file))
         write_bbp(input_file, out_file, station)
 # end of process_main
 

@@ -328,7 +328,7 @@ def read_orientation_bbp(filename):
     """
     Get the orientation from the file's header
     """
-    orientation=None
+    orientation = None
 
     try:
         input_file = open(filename, 'r')
