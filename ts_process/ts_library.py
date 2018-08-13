@@ -693,7 +693,7 @@ def filter_data(data, dt, family, btype,
 # end of filter_timeseries
 
 def interp(data, samples, old_dt, new_dt,
-           debug=False, debug_plot_base=None):
+           debug=False, debug_plot=None):
     """
     Calls the sinc interp method
     """
@@ -716,8 +716,6 @@ def interp(data, samples, old_dt, new_dt,
     new_data = np.dot(data, np.sinc(sinc_matrix / old_dt))
 
     if debug:
-        # Save debug plot
-        output_file = "%s.png" % (debug_plot_base)
         # Find data to plot, from t=10s until t=10s+50pts
         old_start_idx = int(10.0 // old_dt) + 1
         old_end_idx = old_start_idx + 50
@@ -737,8 +735,8 @@ def interp(data, samples, old_dt, new_dt,
                  new_data[new_start_idx:new_end_idx], 'x')
         plt.grid(True)
         plt.xlabel('Seconds')
-        plt.title(os.path.splitext(os.path.basename(output_file))[0])
-        plt.savefig(output_file, format='png',
+        plt.title(os.path.splitext(os.path.basename(debug_plot))[0])
+        plt.savefig(debug_plot, format='png',
                     transparent=False, dpi=300)
         pylab.close()
 
@@ -779,17 +777,17 @@ def process_timeseries_dt(timeseries, new_dt, fmax,
                             timeseries.samples,
                             timeseries.dt,
                             new_dt, debug=debug,
-                            debug_plot_base="%s.acc" % (debug_plots_base))
+                            debug_plot="%s.acc.png" % (debug_plots_base))
     timeseries.vel = interp(timeseries.vel,
                             timeseries.samples,
                             timeseries.dt,
                             new_dt, debug=debug,
-                            debug_plot_base="%s.vel" % (debug_plots_base))
+                            debug_plot="%s.vel.png" % (debug_plots_base))
     timeseries.dis = interp(timeseries.dis,
                             timeseries.samples,
                             timeseries.dt,
                             new_dt, debug=debug,
-                            debug_plot_base="%s.dis" % (debug_plots_base))
+                            debug_plot="%s.dis.png" % (debug_plots_base))
 
     timeseries.samples = timeseries.acc.size
     timeseries.dt = new_dt
