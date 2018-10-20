@@ -66,6 +66,15 @@ class TimeseriesComponent(object):
     This class implements attributes related to a single
     component timeseries, including displacement, velocity,
     and acceleration.
+
+    Variables:
+
+        samples - number of samples in the timeseries
+        dt - delta t for the timeseries
+        orientation - in degress, vertical orientation is "up" or "down"
+        acc - acceleration timeseries
+        vel - velocity timeseries
+        dis - displacement timeseries
     """
     def __init__(self, samples, dt,
                  orientation,
@@ -83,32 +92,49 @@ class TimeseriesComponent(object):
 
 def integrate(data, dt):
     """
-    compute derivative of a numpy array
-    initial condition assumed 0
-    result has same size as input
+    Integrated the input array data using SciPy's cumtrapz function,
+    with the initial condition assumed 0, the result has same size as input
+
+    Inputs:
+        data - timeseries
+        dt - delta t for the input timeseries
+    Outputs:
+        newdata - data array after integration
     """
     newdata = cumtrapz(data, dx=dt, initial=0) + data[0] * dt / 2.0
+
     return newdata
-#end integrate
 
 def derivative(data, dt):
     """
-    compute derivative of an numpy array
+    Computes the derivative of an numpy array
+
+    Inputs:
+        data - input timeseries array
+        dt - delta t for the input timeseries
+    Outputs:
+        newdata - data array after differentiation
     """
     newdata = np.insert(data, 0, 0)
     newdata = np.diff(newdata) / dt
-    return newdata
-#end derivative
 
-def calculate_distance(epicenter, st_loc):
+    return newdata
+
+def calculate_distance(location1, location2):
     """
     Calculates the distance between two pairs of lat, long coordinates
     using the Haversine formula
+
+    Inputs:
+        location1 - [lat, lon] array with first location
+        location2 - [lat, lon] array with second location
+    Outputs:
+        distance - in kilometers
     """
-    lat1 = math.radians(abs(epicenter[0]))
-    lon1 = math.radians(abs(epicenter[1]))
-    lat2 = math.radians(abs(st_loc[0]))
-    lon2 = math.radians(abs(st_loc[1]))
+    lat1 = math.radians(abs(location1[0]))
+    lon1 = math.radians(abs(location1[1]))
+    lat2 = math.radians(abs(location2[0]))
+    lon2 = math.radians(abs(location2[1]))
 
     # haversine formula
     dlon = lon2 - lon1
@@ -120,11 +146,17 @@ def calculate_distance(epicenter, st_loc):
     r = 6371.0
 
     return c * r
-#end calculate_distance
 
 def get_periods(tmin, tmax):
     """
     Return an array of period T
+
+    Inputs:
+        tmin - minimum period
+        tmax - maximum period
+
+    Outputs:
+        periods - array of periods
     """
     # tmin = 1/fmax
     # tmax = 1/fmin
@@ -135,11 +167,17 @@ def get_periods(tmin, tmax):
     periods = np.power(10, periods)
 
     return periods
-#end get_periods
 
-def write_peer_acc_file(peer_fn, acc_ts, delta_t):
+def write_peer_acc_file(peer_fn, acc, dt):
     """
     Write acc timeseries into a peer-format file
+
+    Inputs:
+        peer_fn - filename for the output file
+        acc - acceleration timeseries
+        dt - delta t for the acceleration timeseries
+    Outputs:
+        Output file is created
     """
     # Number of header lines needed in PEER file
     PEER_HEADER_LINES = 6
@@ -155,8 +193,8 @@ def write_peer_acc_file(peer_fn, acc_ts, delta_t):
         output_file.write(line)
     output_file.write("Acceleration in g\n")
     output_file.write("  %d   %1.6f   NPTS, DT\n" %
-                      (len(acc_ts), delta_t))
-    for index, elem in enumerate(acc_ts):
+                      (len(acc), dt))
+    for index, elem in enumerate(acc):
         output_file.write("% 12.7E " % (elem / G2CMSS))
         if (index % 5) == 4:
             output_file.write("\n")
@@ -167,7 +205,18 @@ def run_rotd50(workdir,
                peer_input_1_file, peer_input_2_file,
                output_rotd50_file):
     """
-    Runs the RotD50 code using the inputs provided
+    Runs the external RotD50 program. The RotD50 binary should be
+    located inside the "rotd50" subdirectory inside the ts_process library.
+
+    Inputs:
+        workdir - Work directory where intermediate files will be created.
+                  Creating the work directory, deleting these intermediate
+                  files and the work directory should be done by the caller.
+        peer_input_1_file - first acceleration PEER file
+        peer_input_2_file - second acceleration PEER File
+        output_rotd50_file - output filename for the results
+    Outputs:
+        Output file is created
     """
     # Make sure we don't have absolute path names
     peer_input_1_file = os.path.basename(peer_input_1_file)
@@ -221,6 +270,13 @@ def run_rotd50(workdir,
 def read_rd50(input_rd50_file):
     """
     Reads RotD50 input file
+
+    Inputs:
+        input_rd50_file - filename for the input file
+    Outputs:
+        periods - array containing periods
+        comp1 - array with first component from the file
+        comp2 - array with second component from the file
     """
     periods = np.empty(0)
     comp1 = np.empty(0)
@@ -246,6 +302,19 @@ def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag=False):
     Calculates the RotD50 for a given station, if cut_flag is TRUE,
     trims the acc timeseries using min_i and max_i, returns data
     for periods within tmin, tmax
+
+    Inputs:
+        station - Timetimeseries for the three components (H1, H2, Vertical)
+        min_i - min index to use (default 0)
+        max_i - max index to use (default len(array))
+        tmin - min period for RotD50 data
+        tmax - max period for RotD50 data
+        cut_flag - flag to trim the timeseries using min_i/max_i (default FALSE)
+    Outputs:
+        periods - array containing periods where RotD50 was calculated
+        comp1_rd50 - RotD50 for first horizonal component
+        comp2_rd50 - RotD50 for second horizonal component
+        compv_rd50 - RotD50 for vertical component
     """
     comp_h1 = station[0].acc
     comp_h2 = station[1].acc
@@ -301,38 +370,75 @@ def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag=False):
     return [periods, comp1_rd50, comp2_rd50, compv_rd50]
 
 def get_points(samples):
-    # points is the least base-2 number that is greater than max samples
+    """
+    Returns the least base-2 number that is greater than the max
+    value in the samples array
+
+    Inputs:
+        samples - array with data
+    Outputs:
+        2**power - base-2 number that is greater than the max samples
+    """
     power = int(math.log(max(samples), 2)) + 1
     return 2**power
-# end of get_points
 
 def smooth(data, factor):
+    """
+    Smooth the data in the input array
+
+    Inputs:
+        data - input array
+        factor - used to calculate the smooth factor
+
+    Outputs:
+        data - smoothed array
+    """
     # factor = 3; c = 0.5, 0.25, 0.25
     # TODO: fix coefficients for factors other than 3
-    c = 0.5 / (factor-1)
-    for i in range(1, data.size-1):
-        data[i] = 0.5 * data[i] + c * data[i-1] + c * data[i+1]
+    c = 0.5 / (factor - 1)
+    for i in range(1, data.size - 1):
+        data[i] = 0.5 * data[i] + c * data[i - 1] + c * data[i + 1]
     return data
-#end smooth
 
 def FAS(data, dt, points, fmin, fmax, s_factor):
+    """
+    Calculates the FAS of the input array using NumPy's fft Library
+
+    Inputs:
+        data - input array
+        dt - delta t for the input array
+        fmin - min frequency for results
+        fmax - max frequency for results
+        s_factor - smooth factor to be used for the smooth function
+    Outputs:
+        freq - frequency array
+        afs - fas
+    """
     afs = abs(np.fft.fft(data, points)) * dt
-    freq = (1/dt)*np.array(range(points))/points
+    freq = (1 / dt) * np.array(range(points)) / points
 
-    deltaf = (1/dt)/points
+    deltaf = (1 / dt) / points
 
-    inif = int(fmin/deltaf)
-    endf = int(fmax/deltaf) + 1
+    inif = int(fmin / deltaf)
+    endf = int(fmax / deltaf) + 1
 
     afs = afs[inif:endf]
     afs = smooth(afs, s_factor)
     freq = freq[inif:endf]
     return freq, afs
-#end FAS
 
 def taper(flag, m, samples):
-    # m = samples for taper
-    # samples = total samples
+    """
+    Returns a Kaiser window created by a Besel function
+
+    Inputs:
+        flag - set to 'front', 'end', or 'all' to taper at the beginning,
+               at the end, or at both ends of the timeseries
+        m - number of samples for tapering
+        samples - total number of samples in the timeseries
+    Outputs:
+        window - Taper window
+    """
     window = kaiser(2*m+1, beta=14)
 
     if flag == 'front':
@@ -362,12 +468,20 @@ def taper(flag, m, samples):
         window = np.ones(samples)
 
     return window
-#end taper
 
 def seism_appendzeros(flag, t_diff, m, timeseries):
     """
-    dds zeros in the front and/or at the end of an numpy array
+    Adds zeros in the front or at the end of an numpy array,
     apply taper before adding
+
+    Inputs:
+        flag - 'front' or 'end' - tapering flag passed to
+               the taper function
+        t_diff - how much time to add (in seconds)
+        m - number of samples for tapering
+        timeseries - Input timeseries
+    Outputs:
+        timeseries - Output timeseries after processing
     """
     num = int(t_diff / timeseries.dt)
     zeros = np.zeros(num)
@@ -400,12 +514,19 @@ def seism_appendzeros(flag, t_diff, m, timeseries):
     timeseries.samples += num
 
     return timeseries
-# end of seism_appendzeros
 
 def seism_cutting(flag, t_diff, m, timeseries):
     """
-    cut data in the front or at the end of an numpy array
+    Cuts data in the front or at the end of an numpy array
     apply taper after cutting
+
+    Inputs:
+        flag - 'front' or 'end' - flag to indicate from where to cut samples
+        t_diff - how much time to cut (in seconds)
+        m - number of samples for tapering
+        timeseries - Input timeseries
+    Outputs:
+        timeseries - Output timeseries after cutting
     """
     num = int(t_diff / timeseries.dt)
     if num >= timeseries.samples:
@@ -492,8 +613,18 @@ def baseline_function(acc, dt, gscale, ordern):
     displacement time series using 5th order polynomial without the constant
     and linear term (only square, cubic, 4th and 5th order terms, so that
     the leading constants are applied to disp, vel, and acc)
+
+    Inputs:
+        acc - acceleration timeseries
+        dt - delta t for the input timeseries
+        gscale - user gscale to convert to cm/sec2
+        ordern - polynomial order to use
+    Outputs:
+        times - array with time values (seconds)
+        amod - corrected acceleration timeseries
+        vmod - corrected velocity timeseries
+        dmod - corrected displacement timeseries
     """
-    # Use gscale to convert to cm/sec2
     acc = acc * gscale
     times = np.linspace(0, (len(acc) - 1) * dt, len(acc))
 
@@ -542,11 +673,17 @@ def baseline_function(acc, dt, gscale, ordern):
     amod = amod / gscale
 
     return times, amod, vmod, dmod
-# end of baseline_function
 
 def rotate_timeseries(station, rotation_angle):
     """
     The function rotates timeseries for a specific station
+
+    Inputs:
+        station - array containing 3 TimeseriesComponent structures
+        rotation_angle - angle to rotate the timeseries in degrees
+    Outputs:
+        station - structure with array of 3 TimeseriesComponent rotated
+                  by rotation_angle degrees
     """
     # Check rotation angle
     if rotation_angle is None:
@@ -631,7 +768,22 @@ def filter_timeseries(timeseries, family, btype,
                       fmin=0.0, fmax=0.0, Wn=None,
                       debug=False):
     """
-    Function that filters acc/vel/dis of a timeseries component
+    Function that filters acc/vel/dis of a timeseries component by calling
+    the filter data function once for each.
+
+    Inputs:
+        timeseries - TimeseriesComponent structure with input arrays
+        family - filter family to use: 'ellip' or 'butter'
+        btype - type of filter: 'bandpass', 'lowpass', 'highpass'
+        N - order of the filter
+        rp - maximum ripple (in dB) for ellip filter
+        rs - minimum attenuation required in the stop band (dB) for ellip filter
+        fmin - min frequency
+        fmax - max frequency
+        Wn - array of critical frequencies, overriden by fmin/fmax
+        debug - debug flag
+    Outputs:
+        timeseries - filtered TimeseriesComponent
     """
     if debug:
         print("[INFO]: Filtering timeseries: %s - %s - fmin=%.2f, fmax=%.2f" %
@@ -656,7 +808,21 @@ def filter_data(data, dt, family, btype,
                 N=5, rp=0.1, rs=100,
                 fmin=0.0, fmax=0.0, Wn=None):
     """
-    Function that filters timeseries in data
+    Function that filters a timeseries
+
+    Inputs:
+        data - input timeseries array
+        dt - delta t for the input timeseries
+        family - filter family to use: 'ellip' or 'butter'
+        btype - type of filter: 'bandpass', 'lowpass', 'highpass'
+        N - order of the filter
+        rp - maximum ripple (in dB) for ellip filter
+        rs - minimum attenuation required in the stop band (dB) for ellip filter
+        fmin - min frequency
+        fmax - max frequency
+        Wn - array of critical frequencies, overriden by fmin/fmax
+    Outputs:
+        data - filtered timeseries
     """
     # Make sure we have a numpy array in the input
     if not isinstance(data, np.ndarray):
@@ -690,12 +856,21 @@ def filter_data(data, dt, family, btype,
         sys.exit(-1)
 
     return data
-# end of filter_timeseries
 
 def interp(data, samples, old_dt, new_dt,
            debug=False, debug_plot=None):
     """
     Calls the sinc interp method
+
+    Inputs:
+        data - input timeseries
+        samples - number of samples in the input timeseries
+        old_dt - delta t for the input timeseries
+        new_dt - desired new delta t
+        debug - debug flag, generates extra information and plot
+        debug_plot - debug plot filename
+    Outputs:
+        new_data - output timeseries after interpolation
     """
     if debug:
         print("[INFO]: Interpolating timeseries: old_dt: %.3f - new_dt: %.3f" %
@@ -742,35 +917,53 @@ def interp(data, samples, old_dt, new_dt,
 
     return new_data
 
-def process_station_dt(station, common_dt, fmax,
+def process_station_dt(station, new_dt, fmax,
                        debug=False, debug_plots_base=None):
     """
     Process the station to set a common dt
+
+    Inputs:
+        station - station array structure with 3 TimeseriesComponent
+        new_dt - desired delta t for the output timeseries
+        fmax - frequency (Hz) to be used in low-pass filter
+        debug - flag to output extra information and debug plot
+        debug_plots_base - basename for the debug plots
+    Outputs:
+        station - station array structure with 3 TimeseriesComponent with
+                  acc/vel/dis components resampled to new_dt
     """
     for i in range(0, 3):
         if type(station[i].orientation) is not str:
             debug_orientation = "%03d" % (int(station[i].orientation))
         else:
             debug_orientation = station[i].orientation
-        station[i] = process_timeseries_dt(station[i], common_dt,
+        station[i] = process_timeseries_dt(station[i], new_dt,
                                            fmax, debug=debug,
                                            debug_plots_base="%s.%s" %
                                            (debug_plots_base,
                                             debug_orientation))
     return station
-#end process_station_dt
 
 def process_timeseries_dt(timeseries, new_dt, fmax,
                           debug=False, debug_plots_base=None):
     """
-    Processes a timeseries:
-    First filter the data using a lowpass filter using fmax,
-    Then adjust the dt to the specified new_dt.
+    Processes a timeseries by first filtering the data using a lowpass
+    filter using fmax, and then adjusting the dt to the specified new_dt.
+
+    Inputs:
+        timeseries - input TimeseriesComponent structure
+        new_dt - desired delta t for the output timeseries
+        fmax - frequency (Hz) to be used in low-pass filter
+        debug - flag to output extra information and debug plot
+        debug_plots_base - basename for the debug plots
+    Outputs:
+        timeseries - output TimeseriesComponent structure after
+                     filtering and resampling
     """
     # call low_pass filter at fmax
     timeseries = filter_timeseries(timeseries, family='butter',
                                    btype='lowpass', fmax=fmax,
-                                   N=4, rp=0.1, rs=100, debug=debug)
+                                   N=4, debug=debug)
 
     # interpolate
     timeseries.acc = interp(timeseries.acc,
@@ -793,14 +986,16 @@ def process_timeseries_dt(timeseries, new_dt, fmax,
     timeseries.dt = new_dt
 
     return timeseries
-# end of process_timeseries_dt
 
 def check_station_data(station):
     """
     Checks the station's data for empty arrays or NaNs.
     Useful for identifying issues after processing.
 
-    Returns False if any problems found
+    Inputs:
+        station - station array structure with 3 TimeseriesComponent
+    Outputs:
+        station - same as input, or False if any problems found
     """
     for i in range(0, len(station)):
         timeseries = station[i]
@@ -824,4 +1019,3 @@ def check_station_data(station):
             print("[ERROR]: NaN data after processing timeseries.")
             return False
     return station
-# end of check_data

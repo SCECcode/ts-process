@@ -311,4 +311,3 @@ def comparison_plot(args, filenames, stations,
 
     plt.savefig(output_file, format=fmt,
                 transparent=False, dpi=300)
-# end of comparison_plot
