@@ -44,7 +44,19 @@ from ts_library import get_points, FAS, calculate_rd50
 def plot_overlay_timeseries(args, filenames, stations,
                             output_file, plot_title=None):
     """
-    Plotting a comparison of multiple timeseries
+    Plotting a comparison of multiple timeseries, supports
+    a maximum of 12 timeseries
+
+    Inputs:
+        args.xmin - min x for timeseries plot (s)
+        args.xmax - max x for timeseries plot (s)
+        filenames - array of filenames to use for the legend
+                    (in same order as data in stations array)
+        stations - array of stations with data to plot
+        output_file - filename to use for the output plot
+        plot_title - title of the plot, default no title
+    Outputs:
+        Plot generated as output_file
     """
     all_styles = ['k', 'r', 'b', 'm', 'g', 'c', 'y', 'brown',
                   'gold', 'blueviolet', 'grey', 'pink']
@@ -149,7 +161,24 @@ def plot_overlay_timeseries(args, filenames, stations,
 def comparison_plot(args, filenames, stations,
                     output_file, plot_title=None):
     """
-    Plot velocity for data and FAS only acceleration for Response
+    Plot velocity for data and FAS only acceleration for response,
+    supports up to 12 timeseries
+
+    Inputs:
+        args.xmin - min x value for timeseries plot (s)
+        args.xmax - max x value for timeseries plot (s)
+        args.xfmin - min frequency for FAS plot (Hz)
+        args.xfmax - max frequency for FAS plot (Hz)
+        args.tmin - min period for response plot (s)
+        args.tmax - max period for response plot (s)
+        args.acc_plots - flag to create acceleration plots instead of velocity
+        filenames - array of filenames to use for the legend
+                    (in same order as data in stations array)
+        stations - array of stations with data to plot
+        output_file - filename to use for the output plot
+        plot_title - title of the plot, default no title
+    Outputs:
+        Plot generated as output_file
     """
     all_styles = ['k', 'r', 'b', 'm', 'g', 'c', 'y', 'brown',
                   'gold', 'blueviolet', 'grey', 'pink']
