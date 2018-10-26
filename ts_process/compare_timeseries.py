@@ -156,8 +156,7 @@ def process_for_plotting(stations, args):
         for i in range(0, 3):
             station[i] = filter_timeseries(station[i],
                                            family='butter', btype=btype,
-                                           fmin=lowf, fmax=highf,
-                                           N=4, rp=0.1, rs=100)
+                                           fmin=lowf, fmax=highf, N=4)
 
     return stations
 

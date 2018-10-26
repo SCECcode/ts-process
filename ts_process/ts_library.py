@@ -305,8 +305,8 @@ def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag=False):
 
     Inputs:
         station - Timetimeseries for the three components (H1, H2, Vertical)
-        min_i - min index to use (default 0)
-        max_i - max index to use (default len(array))
+        min_i - min index to use when cut_flag=True
+        max_i - max index to use when cut_flag=True
         tmin - min period for RotD50 data
         tmax - max period for RotD50 data
         cut_flag - flag to trim the timeseries using min_i/max_i (default FALSE)
@@ -407,6 +407,7 @@ def FAS(data, dt, points, fmin, fmax, s_factor):
     Inputs:
         data - input array
         dt - delta t for the input array
+        points - length of the transformed axis in the fft output
         fmin - min frequency for results
         fmax - max frequency for results
         s_factor - smooth factor to be used for the smooth function
@@ -845,6 +846,13 @@ def filter_data(data, dt, family, btype,
         Wn = w_min
 
     # Calling filter
+
+    # filtfilt A forward-backward filter. This function applies a linear filter
+    # twice, once forward and once backwards. The combined filter has linear phase.
+
+    # sosfiltfilt: A forward-backward digital filter using
+    # cascaded second-order sections.
+
     if family == 'ellip':
         b, a = ellip(N=N, rp=rp, rs=rs, Wn=Wn, btype=btype, analog=False)
         data = filtfilt(b, a, data)
