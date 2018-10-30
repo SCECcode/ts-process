@@ -684,7 +684,9 @@ def rotate_timeseries(station, rotation_angle):
         rotation_angle - angle to rotate the timeseries in degrees
     Outputs:
         station - structure with array of 3 TimeseriesComponent rotated
-                  by rotation_angle degrees
+                  by rotation_angle degrees.
+
+                  Returns False if an error is found.
     """
     # Check rotation angle
     if rotation_angle is None:
@@ -692,7 +694,8 @@ def rotate_timeseries(station, rotation_angle):
         return station
 
     if rotation_angle < 0 or rotation_angle > 360:
-        print("[ERROR]: Invalid rotation angle: %f" % (rotation_angle))
+        print("[ERROR]: rotate_timeseries: Invalid rotation angle: %f" %
+              (rotation_angle))
         return False
 
     # Make sure channels are ordered properly
@@ -712,6 +715,7 @@ def rotate_timeseries(station, rotation_angle):
 
     # We need two orthogonal channels
     if abs(angle) != 90 and abs(angle) != 270:
+        print("[ERROR]: rotate_timeseries: Need two orthogonal channels!")
         return False
 
     # Create rotation matrix
