@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -173,10 +173,10 @@ def read_file_bbp2(filename):
     This function reads a bbp file and returns the timeseries in the
     format time, h1, h2, up tuple
     """
-    time = np.array([])
-    h1_comp = np.array([])
-    h2_comp = np.array([])
-    ud_comp = np.array([])
+    time = []
+    h1_comp = []
+    h2_comp = []
+    ud_comp = []
 
     try:
         input_file = open(filename, 'r')
@@ -193,13 +193,19 @@ def read_file_bbp2(filename):
             # Make them float
             pieces = line.split()
             pieces = [float(piece) for piece in pieces]
-            time = np.append(time, pieces[0])
-            h1_comp = np.append(h1_comp, pieces[1])
-            h2_comp = np.append(h2_comp, pieces[2])
-            ud_comp = np.append(ud_comp, pieces[3])
+            time.append(pieces[0])
+            h1_comp.append(pieces[1])
+            h2_comp.append(pieces[2])
+            ud_comp.append(pieces[3])
     except IOError:
         print("[ERROR]: error reading bbp file: %s" % (filename))
         sys.exit(1)
+
+    # Convert to NumPy Arrays
+    time = np.array(time)
+    h1_comp = np.array(h1_comp)
+    h2_comp = np.array(h2_comp)
+    ud_comp = np.array(ud_comp)
 
     # All done!
     return time, h1_comp, h2_comp, ud_comp

@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -70,7 +70,7 @@ def get_dt(input_file):
 
     # Quit if cannot figure out dt
     if val1 is None or val2 is None:
-        print("Cannot determine dt from RWG file! Exiting...")
+        print("[ERROR]: Cannot determine dt from RWG file! Exiting...")
         sys.exit(1)
 
     # Calculate dt
@@ -84,11 +84,13 @@ def read_rwg(input_file):
     Reads the input file in rwg format and returns arrays containing
     vel_ns, vel_ew, vel_ud components
     """
+    print("[READING]: %s ..." % (os.path.basename(input_file)))
+
     original_header = []
-    time = np.array([])
-    vel_ns = np.array([])
-    vel_ew = np.array([])
-    vel_ud = np.array([])
+    time = []
+    vel_ns = []
+    vel_ew = []
+    vel_ud = []
 
     # Get RWG file dt
     delta_t = get_dt(input_file)
@@ -107,16 +109,22 @@ def read_rwg(input_file):
             if pieces[0] < 0.0:
                 continue
             # Add values to out arrays
-            time = np.append(time, pieces[0])
-            vel_ns = np.append(vel_ns, pieces[1])
-            vel_ew = np.append(vel_ew, pieces[2])
-            vel_ud = np.append(vel_ud, pieces[3])
+            time.append(pieces[0])
+            vel_ns.append(pieces[1])
+            vel_ew.append(pieces[2])
+            vel_ud.append(pieces[3])
     except IOError as e:
         print(e)
         sys.exit(1)
 
     # All done
     input_fp.close()
+
+    # Convert to NumPy Arrays
+    time = np.array(time)
+    vel_ns = np.array(vel_ns)
+    vel_ew = np.array(vel_ew)
+    vel_ud = np.array(vel_ud)
 
     return original_header, delta_t, time, vel_ns, vel_ew, vel_ud
 
