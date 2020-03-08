@@ -7,6 +7,6 @@ These codes have been developed as part of earthquake ground motion research per
 
 ## Primary Developers of ts-process library:
 
-Ricardo Taborda - Universidad EAFIT Medellín Columbia
-Christine Goulet - University of Southern California
-Fabio Silva - Southern California Earthquake Center
+* Ricardo Taborda - Universidad EAFIT Medellín Columbia
+* Christine Goulet - University of Southern California
+* Fabio Silva - Southern California Earthquake Center
