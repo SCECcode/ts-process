@@ -10,3 +10,6 @@ These codes have been developed as part of earthquake ground motion research per
 * Ricardo Taborda - Universidad EAFIT Medellín Columbia
 * Christine Goulet - University of Southern California
 * Fabio Silva - Southern California Earthquake Center
+
+## Software support:
+* software @ scec.org
