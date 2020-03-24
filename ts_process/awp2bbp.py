@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -81,10 +81,10 @@ def read_awp(input_file):
     Reads the input file in awp format and returns arrays containing
     vel_ns, vel_ew, vel_ud components
     """
-    time = np.array([0.0])
-    vel_ns = np.array([0.0])
-    vel_ew = np.array([0.0])
-    vel_ud = np.array([0.0])
+    time = [0.0]
+    vel_ns = [0.0]
+    vel_ew = [0.0]
+    vel_ud = [0.0]
 
     # Get AWP file dt
     delta_t = get_dt(input_file)
@@ -99,16 +99,22 @@ def read_awp(input_file):
             pieces = [float(piece) for piece in pieces]
             # Add values to out arrays
             # Note that in AWP files, channels are EW/NS/UD instead of NS/EW/UD
-            time = np.append(time, pieces[0] + delta_t)
-            vel_ew = np.append(vel_ew, pieces[1])
-            vel_ns = np.append(vel_ns, pieces[2])
-            vel_ud = np.append(vel_ud, pieces[3])
+            time.append(pieces[0] + delta_t)
+            vel_ew.append(pieces[1])
+            vel_ns.append(pieces[2])
+            vel_ud.append(pieces[3])
     except IOError as e:
         print(e)
         sys.exit(1)
 
     # All done
     input_fp.close()
+
+    # Convert to NumPy Arrays
+    time = np.array(time)
+    vel_ew = np.array(vel_ew)
+    vel_ns = np.array(vel_ns)
+    vel_ud = np.array(vel_ud)
 
     return delta_t, time, vel_ns, vel_ew, vel_ud
 
