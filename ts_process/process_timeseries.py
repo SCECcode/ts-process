@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -40,31 +40,7 @@ import sys
 import argparse
 
 from file_utilities import write_bbp, read_stamp, read_files
-from ts_library import rotate_timeseries, process_station_dt, \
-    check_station_data, filter_timeseries, seism_cutting, seism_appendzeros
-
-def filter_data(timeseries, frequencies, debug):
-    """
-    Filter timeseries using the frequencies specified by the user
-    """
-    if len(frequencies) == 1:
-        fmin = 0.0
-        fmax = frequencies[0]
-        btype = 'lowpass'
-    elif len(frequencies) == 2:
-        fmin = frequencies[0]
-        fmax = frequencies[1]
-        btype = 'bandpass'
-    else:
-        print("[ERROR]: Must specify one or two frequencies for filtering!")
-        sys.exit(-1)
-
-    filter_timeseries(timeseries, family='butter', btype=btype,
-                      fmin=fmin, fmax=fmax,
-                      N=4, rp=0.2, rs=100, debug=debug)
-
-    return timeseries
-#end filter_data
+from ts_library import process_station_dt, check_station_data, seism_cutting, seism_appendzeros
 
 def synchronize_all_stations(obs_data, stations, stamp, eqtimestamp, leading):
     """
@@ -165,28 +141,18 @@ def synchronize_all_stations(obs_data, stations, stamp, eqtimestamp, leading):
 def process(obs_file, obs_data, input_files, stations, params):
     """
     This method processes the signals in each pair of stations.
-    Processing consists on scaling, rotation, decimation, alignment
+    Processing consists on scaling, low-pass filtering, alignment
     and other things to make both signals compatible to apply GOF method.
     obs_data: recorded data
     stations: simulation
     """
-    # Rotate synthetics
-    new_stations = []
-    for station, input_file in zip(stations, input_files):
-        if params['debug']:
-            print("[INFO]: Rotating %s - %f degrees" % (input_file,
-                                                        params['azimuth']))
-        new_station = rotate_timeseries(station, params['azimuth'])
-        new_stations.append(new_station)
-    stations = new_stations
-
     # Process signals to have the same dt
     if obs_data is not None:
         debug_plots_base = os.path.join(params['outdir'],
                                         os.path.basename(obs_file).split('.')[0])
         obs_data = process_station_dt(obs_data,
                                       params['targetdt'],
-                                      params['decifmax'],
+                                      params['lp'],
                                       params['debug'],
                                       debug_plots_base)
     new_stations = []
@@ -195,7 +161,7 @@ def process(obs_file, obs_data, input_files, stations, params):
                                         os.path.basename(input_file).split('.')[0])
         new_station = process_station_dt(station,
                                          params['targetdt'],
-                                         params['decifmax'],
+                                         params['lp'],
                                          params['debug'],
                                          debug_plots_base)
         new_stations.append(new_station)
@@ -235,18 +201,6 @@ def process(obs_file, obs_data, input_files, stations, params):
             print("[ERROR]: processed simulated data contains errors!")
             sys.exit(-1)
 
-    # Final filtering step
-    if obs_data is not None:
-        for i in range(0, 3):
-            obs_data[i] = filter_data(obs_data[i],
-                                      params['frequencies'],
-                                      params['debug'])
-    for station in stations:
-        for i in range(0, 3):
-            station[i] = filter_data(station[i],
-                                     params['frequencies'],
-                                     params['debug'])
-
     # All done
     return obs_data, stations
 # end of process
@@ -265,14 +219,10 @@ def parse_arguments():
                         help="leading time for the simulation (seconds)")
     parser.add_argument("--eq-time", dest="eq_time",
                         help="earthquake start time (HH:MM:SS.CCC)")
-    parser.add_argument("--azimuth", type=float, dest="azimuth",
-                        help="azimuth for rotation (degrees)")
     parser.add_argument("--dt", type=float, dest="targetdt",
                         help="target dt for all processed signals")
-    parser.add_argument("--decimation-freq", type=float, dest="decifmax",
-                        help="maximum frequency for decimation")
-    parser.add_argument("--freqs", dest="frequencies",
-                        help="frequencies to filter")
+    parser.add_argument("--lp-freq", type=float, dest="lp",
+                        help="frequency for low-pass filter")
     parser.add_argument("--output-dir", dest="outdir",
                         help="output directory for the outputs")
     parser.add_argument("--debug", dest="debug", action="store_true",
@@ -296,34 +246,15 @@ def parse_arguments():
     else:
         params['outdir'] = args.outdir
 
-    if args.frequencies is None:
-        print("[ERROR]: Please provide sequence of frequencies for filtering!")
+    if args.lp is None:
+        print("[ERROR]: Please enter frequency for low-pass filter!")
     else:
-        freqs = args.frequencies.replace(',', ' ').split()
-        if len(freqs) < 1:
-            print("[ERROR]: Invalid frequencies!")
-            sys.exit(-1)
-        try:
-            freqs = [float(freq) for freq in freqs]
-        except ValueError:
-            print("[ERROR]: Invalid frequencies!")
-        for i in range(0, len(freqs) - 1):
-            if freqs[i] >= freqs[i + 1]:
-                print("[ERROR]: Invalid sequence of sample rates!")
-        params['frequencies'] = freqs
-
-    if args.decifmax is None:
-        print("[ERROR]: Please enter maximum frequency for decimation!")
-    else:
-        params['decifmax'] = args.decifmax
+        params['lp'] = args.lp
 
     if args.targetdt is None:
         print("[ERROR]: Please provide a target DT to be used in all signals!")
     else:
         params['targetdt'] = args.targetdt
-
-    # Copy azimuth parameter for rotation, None means no rotation
-    params['azimuth'] = args.azimuth
 
     if args.eq_time is None:
         print("[ERROR]: Please provide earthquake time!")
@@ -366,12 +297,12 @@ def process_main():
     if obs_data is not None:
         obs_file_out = os.path.join(params['outdir'],
                                     "p-%s" % os.path.basename(obs_file))
-        write_bbp(obs_file, obs_file_out, obs_data)
+        write_bbp(obs_file, obs_file_out, obs_data, params)
 
     for input_file, station in zip(input_files, stations):
         out_file = os.path.join(params['outdir'],
                                 "p-%s" % os.path.basename(input_file))
-        write_bbp(input_file, out_file, station)
+        write_bbp(input_file, out_file, station, params)
 # end of process_main
 
 # ============================ MAIN ==============================
