@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,8 @@ from __future__ import division, print_function
 import os
 import sys
 import argparse
+import numpy as np
+from ts_library import TimeseriesComponent, rotate_timeseries
 
 def parse_her_header(filename):
     """
@@ -100,6 +102,87 @@ def write_bbp_header(out_fp, file_type, file_unit, args):
                  "%s (+ is %s)\n" % (file_type, orientations[2]))
     out_fp.write("#\n")
 
+def read_hercules(input_file):
+    """
+    Reads the input hercules file and returns the
+    data along with parsed header lines
+    """
+    times = []
+    acc_h1 = []
+    vel_h1 = []
+    dis_h1 = []
+    acc_h2 = []
+    vel_h2 = []
+    dis_h2 = []
+    acc_ver = []
+    vel_ver = []
+    dis_ver = []
+    dis_header = []
+    vel_header = []
+    acc_header = []
+
+    try:
+        input_fp = open(input_file, 'r')
+        for line in input_fp:
+            line = line.strip()
+            # Skip comments
+            if line.startswith("#") or line.startswith("%"):
+                pieces = line.split()[1:]
+                # Write header
+                if len(pieces) >= 10:
+                    dis_header.append("# her header: # %s %s %s %s\n" %
+                                     (pieces[0], pieces[1], pieces[2], pieces[3]))
+                    vel_header.append("# her header: # %s %s %s %s\n" %
+                                     (pieces[0], pieces[4], pieces[5], pieces[6]))
+                    acc_header.append("# her header: # %s %s %s %s\n" %
+                                     (pieces[0], pieces[7], pieces[8], pieces[9]))
+                else:
+                    dis_header.append("# her header: %s\n" % (line))
+                continue
+            pieces = line.split()
+            pieces = [float(piece) for piece in pieces]
+            # Write timeseries to files. Please not that Hercules files have
+            # the vertical component positive pointing down so we have to flip it
+            # here to match the BBP format in which vertical component points up
+            times.append(pieces[0])
+            dis_h1.append(pieces[1])
+            dis_h2.append(pieces[2])
+            dis_ver.append(-1 * pieces[3])
+            vel_h1.append(pieces[4])
+            vel_h2.append(pieces[5])
+            vel_ver.append(-1 * pieces[6])
+            acc_h1.append(pieces[7])
+            acc_h2.append(pieces[8])
+            acc_ver.append(-1 * pieces[9])
+    except IOError as e:
+        print(e)
+        sys.exit(-1)
+
+    # All done
+    input_fp.close()
+
+    # Convert to NumPy Arrays
+    times = np.array(times)
+    vel_h1 = np.array(vel_h1)
+    vel_h2 = np.array(vel_h2)
+    vel_ver = np.array(vel_ver)
+    acc_h1 = np.array(acc_h1)
+    acc_h2 = np.array(acc_h2)
+    acc_ver = np.array(acc_ver)
+    dis_h1 = np.array(dis_h1)
+    dis_h2 = np.array(dis_h2)
+    dis_ver = np.array(dis_ver)
+
+    delta_t = times[1] - times[0]
+
+    # Group headers
+    headers = [dis_header, vel_header, acc_header]
+
+    return (headers, delta_t, times,
+            acc_h1, acc_h2, acc_ver,
+            vel_h1, vel_h2, vel_ver,
+            dis_h1, dis_h2, dis_ver)
+
 def her2bbp_main():
     """
     Main function for her to bbp converter
@@ -120,6 +203,8 @@ def her2bbp_main():
     parser.add_argument("-o", "--orientation", default="0,90,UP",
                         dest="orientation",
                         help="orientation, default: 0,90,UP")
+    parser.add_argument("--azimuth", type=float, dest="azimuth",
+                        help="azimuth for rotation (degrees)")
     parser.add_argument("input_file", help="Hercules input timeseries")
     parser.add_argument("output_stem",
                         help="output BBP filename stem without the "
@@ -127,6 +212,18 @@ def her2bbp_main():
     parser.add_argument("-d", dest="output_dir", default="",
                         help="output directory for the BBP file")
     args = parser.parse_args()
+
+    # Check orientation
+    orientation = args.orientation.split(",")
+    if len(orientation) != 3:
+        print("[ERROR]: Need to specify orientation for all 3 components!")
+        sys.exit(-1)
+    orientation[0] = float(orientation[0])
+    orientation[1] = float(orientation[1])
+    orientation[2] = orientation[2].lower()
+    if orientation[2] != "up" and orientation[2] != "down":
+        print("[ERROR]: Vertical orientation must be up or down!")
+        sys.exit(-1)
 
     input_file = args.input_file
     output_file_dis = "%s.dis.bbp" % (os.path.join(args.output_dir,
@@ -142,43 +239,79 @@ def her2bbp_main():
     unit = parse_her_header(input_file)
 
     # Covert from her to BBP format
-    ifile = open(input_file)
+    print("[INFO]: Reading file %s ..." % (os.path.basename(input_file)))
+
+    (headers, delta_t, times,
+     acc_h1, acc_h2, acc_ver,
+     vel_h1, vel_h2, vel_ver,
+     dis_h1, dis_h2, dis_ver) = read_hercules(input_file)
+
+    # Create station data structures
+    samples = vel_h1.size
+
+    # samples, dt, data, acceleration, velocity, displacement
+    signal_h1 = TimeseriesComponent(samples, delta_t, orientation[0],
+                                    acc_h1, vel_h1, dis_h1)
+    signal_h2 = TimeseriesComponent(samples, delta_t, orientation[1],
+                                    acc_h2, vel_h2, dis_h2)
+    signal_ver = TimeseriesComponent(samples, delta_t, orientation[2],
+                                     acc_ver, vel_ver, dis_ver)
+    station = [signal_h1, signal_h2, signal_ver]
+
+    # Rotate timeseries if needed
+    if args.azimuth is not None:
+        print("[INFO]: Rotating timeseries - %f degrees" % (args.azimuth))
+        station = rotate_timeseries(station, args.azimuth)
+
+    # Update orientation after rotation so headers reflect any changes
+    args.orientation = "%s,%s,%s" % (str(station[0].orientation),
+                                     str(station[1].orientation),
+                                     str(station[2].orientation))
+
+    # Pull data back
+    acc_h1 = station[0].acc.tolist()
+    vel_h1 = station[0].vel.tolist()
+    dis_h1 = station[0].dis.tolist()
+    acc_h2 = station[1].acc.tolist()
+    vel_h2 = station[1].vel.tolist()
+    dis_h2 = station[1].dis.tolist()
+    acc_ver = station[2].acc.tolist()
+    vel_ver = station[2].vel.tolist()
+    dis_ver = station[2].dis.tolist()
+
     o_dis_file = open(output_file_dis, 'w')
     o_vel_file = open(output_file_vel, 'w')
     o_acc_file = open(output_file_acc, 'w')
     write_bbp_header(o_dis_file, "displacement", units[unit][0], args)
     write_bbp_header(o_vel_file, "velocity", units[unit][1], args)
     write_bbp_header(o_acc_file, "acceleration", units[unit][2], args)
-    for line in ifile:
-        line = line.strip()
-        # Skip comments
-        if line.startswith("#") or line.startswith("%"):
-            pieces = line.split()[1:]
-            # Write header
-            if len(pieces) >= 10:
-                o_dis_file.write("# her header: # %s %s %s %s\n" %
-                                 (pieces[0], pieces[1], pieces[2], pieces[3]))
-                o_vel_file.write("# her header: # %s %s %s %s\n" %
-                                 (pieces[0], pieces[4], pieces[5], pieces[6]))
-                o_acc_file.write("# her header: # %s %s %s %s\n" %
-                                 (pieces[0], pieces[7], pieces[8], pieces[9]))
-            else:
-                o_dis_file.write("# her header: %s\n" % (line))
-            continue
-        pieces = line.split()
-        pieces = [float(piece) for piece in pieces]
-        # Write timeseries to files. Please not that Hercules files have
-        # the vertical component positive pointing down so we have to flip it
-        # here to match the BBP format in which vertical component points up
-        o_dis_file.write("%1.9E %1.9E %1.9E %1.9E\n" %
-                         (pieces[0], pieces[1], pieces[2], -1 * pieces[3]))
-        o_vel_file.write("%1.9E %1.9E %1.9E %1.9E\n" %
-                         (pieces[0], pieces[4], pieces[5], -1 * pieces[6]))
-        o_acc_file.write("%1.9E %1.9E %1.9E %1.9E\n" %
-                         (pieces[0], pieces[7], pieces[8], -1 * pieces[9]))
 
-    # All done, close everything
-    ifile.close()
+    # Write headers from original Hercules file
+    dis_header = headers[0]
+    vel_header = headers[1]
+    acc_header = headers[2]
+
+    for line in dis_header:
+        o_dis_file.write(line)
+    for line in vel_header:
+        o_vel_file.write(line)
+    for line in acc_header:
+        o_acc_file.write(line)
+
+    # Write files
+    for (time, disp_h1, disp_h2, disp_ver,
+         velo_h1, velo_h2, velo_ver,
+         accel_h1, accel_h2, accel_ver) in zip(times, dis_h1, dis_h2, dis_ver,
+                                               vel_h1, vel_h2, vel_ver,
+                                               acc_h1, acc_h2, acc_ver):
+        o_dis_file.write("%1.9E %1.9E %1.9E %1.9E\n" %
+                         (time, disp_h1, disp_h2, disp_ver))
+        o_vel_file.write("%1.9E %1.9E %1.9E %1.9E\n" %
+                         (time, velo_h1, velo_h2, velo_ver))
+        o_acc_file.write("%1.9E %1.9E %1.9E %1.9E\n" %
+                         (time, accel_h1, accel_h2, accel_ver))
+
+    # All done
     o_dis_file.close()
     o_vel_file.close()
     o_acc_file.close()

@@ -39,7 +39,7 @@ import os
 import sys
 import argparse
 import numpy as np
-from ts_library import integrate, derivative
+from ts_library import integrate, derivative, TimeseriesComponent, rotate_timeseries
 
 def get_dt(input_file):
     """
@@ -67,7 +67,7 @@ def get_dt(input_file):
 
     # Quit if cannot figure out dt
     if val1 is None or val2 is None:
-        print("Cannot determine dt from AWP file! Exiting...")
+        print("[ERROR]: Cannot determine dt from AWP file! Exiting...")
         sys.exit(1)
 
     # Calculate dt
@@ -105,7 +105,7 @@ def read_awp(input_file):
             vel_ud.append(pieces[3])
     except IOError as e:
         print(e)
-        sys.exit(1)
+        sys.exit(-1)
 
     # All done
     input_fp.close()
@@ -164,6 +164,8 @@ def awp2bbp_main():
     parser.add_argument("-o", "--orientation", default="0,90,UP",
                         dest="orientation",
                         help="orientation, default: 0,90,UP")
+    parser.add_argument("--azimuth", type=float, dest="azimuth",
+                        help="azimuth for rotation (degrees)")
     parser.add_argument("input_file", help="AWP input timeseries")
     parser.add_argument("output_stem",
                         help="output BBP filename stem without the "
@@ -180,7 +182,20 @@ def awp2bbp_main():
     output_file_acc = "%s.acc.bbp" % (os.path.join(args.output_dir,
                                                    args.output_stem))
 
+    # Check orientation
+    orientation = args.orientation.split(",")
+    if len(orientation) != 3:
+        print("[ERROR]: Need to specify orientation for all 3 components!")
+        sys.exit(-1)
+    orientation[0] = float(orientation[0])
+    orientation[1] = float(orientation[1])
+    orientation[2] = orientation[2].lower()
+    if orientation[2] != "up" and orientation[2] != "down":
+        print("[ERROR]: Vertical orientation must be up or down!")
+        sys.exit(-1)
+
     # Read AWP file
+    print("[INFO]: Reading file %s ..." % (os.path.basename(input_file)))
     delta_t, times, vel_h1, vel_h2, vel_ver = read_awp(input_file)
 
     # Calculate displacement
@@ -192,6 +207,40 @@ def awp2bbp_main():
     acc_h1 = derivative(vel_h1, delta_t)
     acc_h2 = derivative(vel_h2, delta_t)
     acc_ver = derivative(vel_ver, delta_t)
+
+    # Create station data structures
+    samples = vel_h1.size
+
+    # samples, dt, data, acceleration, velocity, displacement
+    signal_h1 = TimeseriesComponent(samples, delta_t, orientation[0],
+                                    acc_h1, vel_h1, dis_h1)
+    signal_h2 = TimeseriesComponent(samples, delta_t, orientation[1],
+                                    acc_h2, vel_h2, dis_h2)
+    signal_ver = TimeseriesComponent(samples, delta_t, orientation[2],
+                                     acc_ver, vel_ver, dis_ver)
+
+    station = [signal_h1, signal_h2, signal_ver]
+
+    # Rotate timeseries if needed
+    if args.azimuth is not None:
+        print("[INFO]: Rotating timeseries - %f degrees" % (args.azimuth))
+        station = rotate_timeseries(station, args.azimuth)
+
+    # Update orientation after rotation so headers reflect any changes
+    args.orientation = "%s,%s,%s" % (str(station[0].orientation),
+                                     str(station[1].orientation),
+                                     str(station[2].orientation))
+
+    # Pull data back
+    acc_h1 = station[0].acc.tolist()
+    vel_h1 = station[0].vel.tolist()
+    dis_h1 = station[0].dis.tolist()
+    acc_h2 = station[1].acc.tolist()
+    vel_h2 = station[1].vel.tolist()
+    dis_h2 = station[1].dis.tolist()
+    acc_ver = station[2].acc.tolist()
+    vel_ver = station[2].vel.tolist()
+    dis_ver = station[2].dis.tolist()
 
     # Write header
     o_dis_file = open(output_file_dis, 'w')
