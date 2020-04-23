@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,7 @@ if mpl.get_backend() != 'agg':
     mpl.use('Agg') # Disables use of Tk/X11
 from file_utilities import read_file
 from ts_library import calculate_distance, filter_timeseries
+from file_utilities import write_bbp
 from ts_plot_library import comparison_plot
 
 def parse_arguments():
@@ -53,6 +54,10 @@ def parse_arguments():
                                      " a number of timeseries files.")
     parser.add_argument("-o", "--output", dest="outfile", required=True,
                         help="output png file")
+    parser.add_argument("--outdir", dest="outdir", required=False,
+                        help="output directory for processed timeseries")
+    parser.add_argument("--prefix", dest="prefix", required=False,
+                        help="prefix for processed timeseries output files")
     parser.add_argument("--epicenter-lat", dest="epicenter_lat", type=float,
                         help="earthquake epicenter latitude")
     parser.add_argument("--epicenter-lon", dest="epicenter_lon", type=float,
@@ -87,7 +92,8 @@ def parse_arguments():
     parser.add_argument("--acc", dest="acc_plots",
                         default=False, action='store_true',
                         help="Generate acceleration plots instead of velocity")
-
+    parser.add_argument("--obs", dest="obs_file",
+                        help="input file containing recorded data")
     parser.add_argument('input_files', nargs='*')
     args = parser.parse_args()
 
@@ -124,15 +130,22 @@ def parse_arguments():
         if args.lowf >= args.highf:
             print("[ERROR]: lowf must be smaller than highf!")
             sys.exit(-1)
+    if args.prefix is not None and args.outdir is not None:
+        args.save_timeseries = True
+    else:
+        args.save_timeseries = False
 
     return args
 
-def process_for_plotting(stations, args):
+def process_for_plotting(obs_filename, obs_station,
+                         filenames, stations, args):
     """
     Process stations before plotting as indicated by the user
 
     Basically applies a low/high/band pass butterworth filter
-    to all timeseries.
+    to all timeseries. The obs_station, if present, is treated
+    separately as it is already filtered and we want to avoid
+    double filtering it.
     """
     # Filtering data
     lowf = args.lowf
@@ -140,25 +153,59 @@ def process_for_plotting(stations, args):
 
     if lowf is None and highf is None:
         # Only if needed!
-        return stations
+        return obs_station, stations
+
+    # Handle observation data first
+    if obs_station is not None and highf is not None:
+        btype = 'lowpass'
+        print("[PROCESSING]: Filter Obs: butter %s 0.0 %1.1f" % (btype, highf))
+        for i in range(0, 3):
+            obs_station[i] = filter_timeseries(obs_station[i],
+                                               family='butter', btype=btype,
+                                               fmin=0.0, fmax=highf, N=4)
+        # Save timseries if needed
+        if args.save_timeseries:
+            # Write processed files
+            params = {}
+            params['lp'] = highf
+            obs_file_out = os.path.join(args.outdir,
+                                        "%s%s" %
+                                        (args.prefix,
+                                         os.path.basename(obs_filename)))
+            write_bbp(obs_filename, obs_file_out, obs_station, params)
+
+    # Now filter simulated data
+    params = {}
     if lowf is not None and highf is not None:
         btype = 'bandpass'
+        params['hp'] = lowf
+        params['lp'] = highf
     elif lowf is None and highf is not None:
         btype = "lowpass"
+        params['lp'] = highf
         lowf = 0.0
     else:
         btype = "highpass"
+        params['hp'] = lowf
         highf = 0.0
 
     print("[PROCESSING]: Filter: butter %s %1.1f %1.1f" % (btype,
                                                            lowf, highf))
-    for station in stations:
+    for input_file, station in zip(filenames, stations):
         for i in range(0, 3):
             station[i] = filter_timeseries(station[i],
                                            family='butter', btype=btype,
                                            fmin=lowf, fmax=highf, N=4)
+        # Save timseries if needed
+        if args.save_timeseries:
+            # Write processed files
+            out_file = os.path.join(args.outdir,
+                                    "%s%s" %
+                                    (args.prefix,
+                                     os.path.basename(input_file)))
+            write_bbp(input_file, out_file, station, params)
 
-    return stations
+    return obs_station, stations
 
 def compare_timeseries_main():
     """
@@ -168,6 +215,7 @@ def compare_timeseries_main():
     args = parse_arguments()
     # Copy inputs
     output_file = args.outfile
+    obs_filename = args.obs_file
     filenames = args.input_files
 
     # Figure out filtering frequencies, if any
@@ -220,15 +268,34 @@ def compare_timeseries_main():
             plot_title = "%s, Dist: ~%dkm, Freq: %s" % (args.station,
                                                         distance, freqs)
 
+    # Read observation data, if provided
+    if obs_filename is not None:
+        obs_station = read_file(obs_filename)
+        obs_basename = os.path.basename(obs_filename)
+    else:
+        obs_station = None
+        obs_basename = None
+
     # Read data
     stations = [read_file(filename) for filename in filenames]
-    filenames = [os.path.basename(filename) for filename in filenames]
+    basenames = [os.path.basename(filename) for filename in filenames]
 
     # Perform any processing requested by the user
-    stations = process_for_plotting(stations, args)
+    obs_station, stations = process_for_plotting(obs_filename, obs_station,
+                                                 filenames, stations, args)
+
+    # Combine observations and simulations in a single list
+    if obs_station is not None:
+        all_stations = [obs_station]
+        all_stations.extend(stations)
+        all_filenames = [obs_basename]
+        all_filenames.extend(basenames)
+    else:
+        all_stations = stations
+        all_filenames = basenames
 
     # Create plot
-    comparison_plot(args, filenames, stations,
+    comparison_plot(args, all_filenames, all_stations,
                     output_file, plot_title=plot_title)
 
 # ============================ MAIN ==============================
