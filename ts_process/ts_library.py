@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -972,11 +972,6 @@ def process_timeseries_dt(timeseries, new_dt, fmax,
         timeseries - output TimeseriesComponent structure after
                      filtering and resampling
     """
-    # call low_pass filter at fmax
-    timeseries = filter_timeseries(timeseries, family='butter',
-                                   btype='lowpass', fmax=fmax,
-                                   N=4, debug=debug)
-
     # interpolate
     timeseries.acc = interp(timeseries.acc,
                             timeseries.samples,
@@ -996,6 +991,11 @@ def process_timeseries_dt(timeseries, new_dt, fmax,
 
     timeseries.samples = timeseries.acc.size
     timeseries.dt = new_dt
+
+    # call low_pass filter at fmax
+    timeseries = filter_timeseries(timeseries, family='butter',
+                                   btype='lowpass', fmax=fmax,
+                                   N=4, debug=debug)
 
     return timeseries
 
