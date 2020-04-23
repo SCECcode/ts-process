@@ -463,7 +463,7 @@ def write_hercules(filename, station):
     out_f.close()
 # end of write_hercules
 
-def write_bbp(input_file, output_file, station):
+def write_bbp(input_file, output_file, station, params={}):
     """
     This function generates processed .bbp files for
     each of velocity/acceleration/displacement
@@ -550,6 +550,16 @@ def write_bbp(input_file, output_file, station):
                     output_header.append("# orientation= %s" % (",".join([str(int(station[0].orientation)),
                                                                           str(int(station[1].orientation)),
                                                                           station[2].orientation])))
+                elif item.find("lp=") > 0:
+                    if 'lp' in params:
+                        output_header.append("#          lp= %.2f" % (params['lp']))
+                    else:
+                        output_header.append(item)
+                elif item.find("hp=") > 0:
+                    if 'hp' in params:
+                        output_header.append("#          hp= %.2f" % (params['hp']))
+                    else:
+                        output_header.append(item)
                 elif item.find("Column 2") > 0:
                     output_header.append("# Column 2: H1 component ground "
                                          "%s (+ is %s)" % (data[4],
