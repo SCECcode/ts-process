@@ -297,11 +297,9 @@ def comparison_plot(args, filenames, stations,
         for freq, fas, style in zip(freqs, fas_s, styles):
             axarr[i][1].plot(freq, fas, style)
 
-        tmp_xfmin = 0
-        if xfmin < 0.5:
-            tmp_xfmin = 0
-        else:
-            tmp_xfmin = xfmin
+        tmp_xfmin = xfmin
+        if tmp_xfmin < 0.005:
+            tmp_xfmin = 0.01
         plt.xlim(tmp_xfmin, xfmax)
 
         if i == 2:
