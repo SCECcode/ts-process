@@ -145,9 +145,9 @@ def parse_rwg_header(header):
             params["lat"] = float(pieces[2])
             continue
         if line.find("Column 2:") > 0:
-            if pieces[7] == "(m/s)":
-                params["unit"] = "m"
-            elif pieces[7] == "(cm/s)":
+            if line.find("(m/s)") > 0:
+                 params["unit"] = "m"
+            elif line.find("(cm/s)") > 0:
                 params["unit"] = "cm"
             continue
 
