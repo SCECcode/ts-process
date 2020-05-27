@@ -81,13 +81,14 @@ def read_awp(input_file):
     Reads the input file in awp format and returns arrays containing
     vel_ns, vel_ew, vel_ud components
     """
-    time = [0.0]
-    vel_ns = [0.0]
-    vel_ew = [0.0]
-    vel_ud = [0.0]
+    time = []
+    vel_ns = []
+    vel_ew = []
+    vel_ud = []
 
     # Get AWP file dt
     delta_t = get_dt(input_file)
+    current_time = 0.0
 
     try:
         input_fp = open(input_file, 'r')
@@ -99,7 +100,8 @@ def read_awp(input_file):
             pieces = [float(piece) for piece in pieces]
             # Add values to out arrays
             # Note that in AWP files, channels are EW/NS/UD instead of NS/EW/UD
-            time.append(pieces[0] + delta_t)
+            time.append(current_time)
+            current_time = current_time + delta_t
             vel_ew.append(pieces[1])
             vel_ns.append(pieces[2])
             vel_ud.append(pieces[3])
