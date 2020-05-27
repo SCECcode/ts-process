@@ -44,7 +44,7 @@ import tempfile
 import numpy as np
 import subprocess
 from scipy import interpolate
-from scipy.signal import sosfiltfilt, filtfilt, ellip, butter, kaiser
+from scipy.signal import sosfiltfilt, filtfilt, ellip, butter, kaiser, zpk2sos
 from scipy.integrate import cumtrapz
 import matplotlib as mpl
 if mpl.get_backend() != 'agg':
@@ -861,8 +861,9 @@ def filter_data(data, dt, family, btype,
         b, a = ellip(N=N, rp=rp, rs=rs, Wn=Wn, btype=btype, analog=False)
         data = filtfilt(b, a, data)
     elif family == 'butter':
-        b, a = butter(N=N, Wn=Wn, btype=btype, analog=False)
-        data = filtfilt(b, a, data)
+        z, p, k = butter(N=N, Wn=Wn, btype=btype, analog=False, output='zpk')
+        butter_sos = zpk2sos(z, p, k)
+        data = sosfiltfilt(butter_sos, data)
     else:
         print("[ERROR]: Unknown filter family: %s" % (family))
         sys.exit(-1)
