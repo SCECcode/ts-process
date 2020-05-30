@@ -551,12 +551,12 @@ def write_bbp(input_file, output_file, station, params={}):
                                                                           str(int(station[1].orientation)),
                                                                           station[2].orientation])))
                 elif item.find("lp=") > 0:
-                    if 'lp' in params:
+                    if 'lp' in params and params['lp'] is not None:
                         output_header.append("#          lp= %.2f" % (params['lp']))
                     else:
                         output_header.append(item)
                 elif item.find("hp=") > 0:
-                    if 'hp' in params:
+                    if 'hp' in params and params['hp'] is not None:
                         output_header.append("#          hp= %.2f" % (params['hp']))
                     else:
                         output_header.append(item)
