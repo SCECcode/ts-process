@@ -994,9 +994,10 @@ def process_timeseries_dt(timeseries, new_dt, fmax,
     timeseries.dt = new_dt
 
     # call low_pass filter at fmax
-    timeseries = filter_timeseries(timeseries, family='butter',
-                                   btype='lowpass', fmax=fmax,
-                                   N=4, debug=debug)
+    if fmax is not None:
+        timeseries = filter_timeseries(timeseries, family='butter',
+                                       btype='lowpass', fmax=fmax,
+                                       N=4, debug=debug)
 
     return timeseries
 

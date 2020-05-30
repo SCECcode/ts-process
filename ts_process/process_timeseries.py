@@ -246,10 +246,8 @@ def parse_arguments():
     else:
         params['outdir'] = args.outdir
 
-    if args.lp is None:
-        print("[ERROR]: Please enter frequency for low-pass filter!")
-    else:
-        params['lp'] = args.lp
+    # None means no low-pass filtering after adjusting dt
+    params['lp'] = args.lp
 
     if args.targetdt is None:
         print("[ERROR]: Please provide a target DT to be used in all signals!")
