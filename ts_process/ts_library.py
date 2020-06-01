@@ -769,7 +769,7 @@ def rotate_timeseries(station, rotation_angle):
 # end of rotate
 
 def filter_timeseries(timeseries, family, btype,
-                      N=5, rp=0.1, rs=100,
+                      N=4, rp=0.1, rs=100,
                       fmin=0.0, fmax=0.0, Wn=None,
                       debug=False):
     """
@@ -810,7 +810,7 @@ def filter_timeseries(timeseries, family, btype,
     return timeseries
 
 def filter_data(data, dt, family, btype,
-                N=5, rp=0.1, rs=100,
+                N=4, rp=0.1, rs=100,
                 fmin=0.0, fmax=0.0, Wn=None):
     """
     Function that filters a timeseries
