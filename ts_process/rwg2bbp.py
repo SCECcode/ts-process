@@ -168,6 +168,7 @@ def write_bbp_header(out_fp, file_type, file_unit, args, header):
     out_fp.write("#         lon= %s\n" % (args.longitude))
     out_fp.write("#         lat= %s\n" % (args.latitude))
     out_fp.write("#       units= %s\n" % (file_unit))
+    out_fp.write("#     padding= 0\n")
     out_fp.write("# orientation= %s\n" % (orientation))
     out_fp.write("#\n")
     out_fp.write("# Data fields are TAB-separated\n")

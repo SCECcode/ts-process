@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -447,6 +447,8 @@ def write_bbp(station, station_metadata, destination):
         out_fp.write("#          lp= %s\n" %
                      (station_metadata['low_pass']))
         out_fp.write("#       units= %s\n" % (data[5]))
+        # We haven't added any padding to the timeseries yet
+        out_fp.write("#     padding= 0\n")
         # Orientation is always 0,90,UP as we just rotated the timeseries
         out_fp.write("# orientation= 0,90,UP\n")
         out_fp.write("#\n")

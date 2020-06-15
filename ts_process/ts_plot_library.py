@@ -2,7 +2,7 @@
 """
 BSD 3-Clause License
 
-Copyright (c) 2018, Southern California Earthquake Center
+Copyright (c) 2020, Southern California Earthquake Center
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -189,6 +189,7 @@ def comparison_plot(args, filenames, stations,
         sys.exit(-1)
 
     delta_ts = [station[0].dt for station in stations]
+    paddings = [station[0].padding for station in stations]
     files_vel = [os.path.basename(filename) for filename in filenames]
     files_acc = [filename.replace(".vel.", ".acc.") for filename in files_vel]
 
@@ -200,17 +201,10 @@ def comparison_plot(args, filenames, stations,
     tmax = args.tmax
     acc_flag = args.acc_plots
 
-    min_is = [int(xtmin/delta_t) for delta_t in delta_ts]
-    max_is = [int(xtmax/delta_t) for delta_t in delta_ts]
+    min_is = [int(xtmin/delta_t) + padding for delta_t, padding in zip(delta_ts, paddings)]
+    max_is = [int(xtmax/delta_t) + padding for delta_t, padding in zip(delta_ts, paddings)]
 
-    rd50s = [calculate_rd50(station,
-                            min_i,
-                            max_i,
-                            tmin,
-                            tmax,
-                            False) for station, min_i, max_i in zip(stations,
-                                                                    min_is,
-                                                                    max_is)]
+    rd50s = [calculate_rd50(station, tmin, tmax) for station in stations]
 
     f, axarr = plt.subplots(nrows=3, ncols=3, figsize=(14, 9))
     for i in range(0, 3):
@@ -232,10 +226,11 @@ def comparison_plot(args, filenames, stations,
         if type(title) is not str:
             title = str(int(title))
 
-        for sample, max_i, delta_t in zip(samples, max_is, delta_ts):
-            if sample - 1 < max_i:
+        for sample, padding, max_i, delta_t in zip(samples, paddings,
+                                                   max_is, delta_ts):
+            if sample - padding - 1 < max_i:
                 print("[ERROR]: t_max has to be under %f" %
-                      ((sample - 1) * delta_t))
+                      ((sample - (2 * padding) - 1) * delta_t))
                 sys.exit(1)
 
         # cutting signal by bounds

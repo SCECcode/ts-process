@@ -156,18 +156,29 @@ def process_for_plotting(obs_filename, obs_station,
         return obs_station, stations
 
     # Handle observation data first
-    if obs_station is not None and highf is not None:
-        btype = 'lowpass'
-        print("[PROCESSING]: Filter Obs: butter %s 0.0 %1.1f" % (btype, highf))
+    if obs_station is not None:
+        params = {}
+        if lowf is not None and highf is not None:
+            btype = 'bandpass'
+            params['hp'] = lowf
+            params['lp'] = highf
+        elif lowf is None and highf is not None:
+            btype = 'lowpass'
+            params['lp'] = highf
+            lowf = 0.0
+        else:
+            btype = "highpass"
+            params['hp'] = lowf
+            highf = 0.0
+        print("[PROCESSING]: Filter Obs: butter %s %1.1f %1.1f" % (btype,
+                                                                   lowf, highf))
         for i in range(0, 3):
             obs_station[i] = filter_timeseries(obs_station[i],
                                                family='butter', btype=btype,
-                                               fmin=0.0, fmax=highf, N=4)
+                                               fmin=lowf, fmax=highf, N=4)
         # Save timseries if needed
         if args.save_timeseries:
             # Write processed files
-            params = {}
-            params['lp'] = highf
             obs_file_out = os.path.join(args.outdir,
                                         "%s%s" %
                                         (args.prefix,
@@ -175,6 +186,8 @@ def process_for_plotting(obs_filename, obs_station,
             write_bbp(obs_filename, obs_file_out, obs_station, params)
 
     # Now filter simulated data
+    lowf = args.lowf
+    highf = args.highf
     params = {}
     if lowf is not None and highf is not None:
         btype = 'bandpass'

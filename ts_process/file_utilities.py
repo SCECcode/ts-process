@@ -66,6 +66,39 @@ def scale_from_m_to_cm(station):
     return station
 # end of scale_from_m_to_cm
 
+def get_dt(input_file):
+    """
+    Read timeseries file and return dt
+    """
+    val1 = None
+    val2 = None
+    file_dt = None
+
+    # Figure out dt first, we need it later
+    ifile = open(input_file)
+    for line in ifile:
+        # Skip comments
+        if line.startswith("#") or line.startswith("%"):
+            continue
+        pieces = line.split()
+        pieces = [float(piece) for piece in pieces]
+        if val1 is None:
+            val1 = pieces[0]
+            continue
+        if val2 is None:
+            val2 = pieces[0]
+            break
+    ifile.close()
+
+    # Quit if cannot figure out dt
+    if val1 is None or val2 is None:
+        print("[ERROR]: Cannot determine dt from file! Exiting...")
+        sys.exit(1)
+
+    # Return dt
+    return val2 - val1
+# end get_dt
+
 def read_files(obs_file, input_files):
     """
     Reads all input files
@@ -247,16 +280,19 @@ def read_file_bbp(filename):
     # Read orientation from one of the files
     orientation = read_orientation_bbp(vel_file)
 
+    # Read padding information from one of the files
+    padding = read_padding_bbp(vel_file)
+
     samples = dis_h1.size
     delta_t = time[1]
 
     # samples, dt, data, acceleration, velocity, displacement
     signal_h1 = TimeseriesComponent(samples, delta_t, orientation[0],
-                                    acc_h1, vel_h1, dis_h1)
+                                    acc_h1, vel_h1, dis_h1, padding=padding)
     signal_h2 = TimeseriesComponent(samples, delta_t, orientation[1],
-                                    acc_h2, vel_h2, dis_h2)
+                                    acc_h2, vel_h2, dis_h2, padding=padding)
     signal_ver = TimeseriesComponent(samples, delta_t, orientation[2],
-                                     acc_ver, vel_ver, dis_ver)
+                                     acc_ver, vel_ver, dis_ver, padding=padding)
 
     station = [signal_h1, signal_h2, signal_ver]
     return station
@@ -329,6 +365,29 @@ def read_unit_bbp(filename):
     print("[ERROR]: Cannot parse units in bbp file!")
     sys.exit(-1)
 # end of read_unit_bbp
+
+def read_padding_bbp(filename):
+    """
+    Get the padding information from a BBP file's header
+    """
+    padding = 0
+
+    try:
+        input_file = open(filename, 'r')
+        for line in input_file:
+            if line.find("padding=") > 0:
+                line = line.strip()
+                padding = line[(line.find("=") + 1):]
+                padding = int(float(padding))
+                break
+        input_file.close()
+    except IOError:
+        print("[ERROR]: No such file.")
+        sys.exit(-1)
+
+    # All done!
+    return padding
+# end of read_padding_bbp
 
 def read_orientation_bbp(filename):
     """
@@ -508,6 +567,7 @@ def write_bbp(input_file, output_file, station, params={}):
                              "#         lon= 0.00",
                              "#         lat= 0.00",
                              "#       units= %s" % (data[5]),
+                             "#     padding= %d" % (station[0].padding),
                              "# orientation= %s" % (",".join([str(int(station[0].orientation)),
                                                               str(int(station[1].orientation)),
                                                               station[2].orientation])),
@@ -560,6 +620,8 @@ def write_bbp(input_file, output_file, station, params={}):
                         output_header.append("#          hp= %.2f" % (params['hp']))
                     else:
                         output_header.append(item)
+                elif item.find("padding=") > 0:
+                    output_header.append("#     padding= %d" % (station[0].padding))
                 elif item.find("Column 2") > 0:
                     output_header.append("# Column 2: H1 component ground "
                                          "%s (+ is %s)" % (data[4],

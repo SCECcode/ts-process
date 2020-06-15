@@ -153,8 +153,9 @@ def process(obs_file, obs_data, input_files, stations, params):
         obs_data = process_station_dt(obs_data,
                                       params['targetdt'],
                                       params['lp'],
-                                      params['debug'],
-                                      debug_plots_base)
+                                      taper=params['taper'],
+                                      debug=params['debug'],
+                                      debug_plots_base=debug_plots_base)
     new_stations = []
     for station, input_file in zip(stations, input_files):
         debug_plots_base = os.path.join(params['outdir'],
@@ -162,8 +163,9 @@ def process(obs_file, obs_data, input_files, stations, params):
         new_station = process_station_dt(station,
                                          params['targetdt'],
                                          params['lp'],
-                                         params['debug'],
-                                         debug_plots_base)
+                                         taper=params['taper'],
+                                         debug=params['debug'],
+                                         debug_plots_base=debug_plots_base)
         new_stations.append(new_station)
     stations = new_stations
 
@@ -223,6 +225,8 @@ def parse_arguments():
                         help="target dt for all processed signals")
     parser.add_argument("--lp-freq", type=float, dest="lp",
                         help="frequency for low-pass filter")
+    parser.add_argument("--taper", type=int, dest="taper",
+                        help="taper window length, default is 8")
     parser.add_argument("--output-dir", dest="outdir",
                         help="output directory for the outputs")
     parser.add_argument("--debug", dest="debug", action="store_true",
@@ -245,6 +249,12 @@ def parse_arguments():
         print("[ERROR]: Please provide output directory!")
     else:
         params['outdir'] = args.outdir
+
+    # Check for user-provided taper window length
+    if args.taper is None:
+        params['taper'] = 8
+    else:
+        params['taper'] = args.taper
 
     # None means no low-pass filtering after adjusting dt
     params['lp'] = args.lp

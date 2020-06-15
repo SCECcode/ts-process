@@ -44,7 +44,8 @@ import tempfile
 import numpy as np
 import subprocess
 from scipy import interpolate
-from scipy.signal import sosfiltfilt, filtfilt, ellip, butter, kaiser, zpk2sos
+from scipy.signal import sosfiltfilt, filtfilt, ellip, butter, kaiser, zpk2sos, decimate
+from scipy.signal.windows import tukey
 from scipy.integrate import cumtrapz
 import matplotlib as mpl
 if mpl.get_backend() != 'agg':
@@ -78,7 +79,8 @@ class TimeseriesComponent(object):
     """
     def __init__(self, samples, dt,
                  orientation,
-                 acc, vel, dis):
+                 acc, vel, dis,
+                 padding=0):
         """
         Initialize the class attributes with the parameters
         provided by the user
@@ -89,6 +91,7 @@ class TimeseriesComponent(object):
         self.acc = acc
         self.vel = vel
         self.dis = dis
+        self.padding = 0
 
 def integrate(data, dt):
     """
@@ -278,9 +281,9 @@ def read_rd50(input_rd50_file):
         comp1 - array with first component from the file
         comp2 - array with second component from the file
     """
-    periods = np.empty(0)
-    comp1 = np.empty(0)
-    comp2 = np.empty(0)
+    periods = []
+    comp1 = []
+    comp2 = []
     input_file = open(input_rd50_file, 'r')
     for line in input_file:
         line = line.strip()
@@ -290,14 +293,14 @@ def read_rd50(input_rd50_file):
             continue
         items = line.split()
         items = [float(item) for item in items]
-        periods = np.append(periods, items[0])
-        comp1 = np.append(comp1, items[1])
-        comp2 = np.append(comp2, items[2])
+        periods.append(items[0])
+        comp1.append(items[1])
+        comp2.append(items[2])
     input_file.close()
 
-    return periods, comp1, comp2
+    return np.array(periods), np.array(comp1), np.array(comp2)
 
-def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag=False):
+def calculate_rd50(station, tmin, tmax, min_i=None, max_i=None, cut_flag=False):
     """
     Calculates the RotD50 for a given station, if cut_flag is TRUE,
     trims the acc timeseries using min_i and max_i, returns data
@@ -321,11 +324,15 @@ def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag=False):
     comp_v = station[2].acc
     delta_ts = [item.dt for item in station]
     peer_fns = ["hor1.acc.peer", "hor2.acc.peer", "ver.acc.peer"]
-    rotd50_h_file = "station_h.rd50"
+    rotd50_h1_file = "station_h1.rd50"
+    rotd50_h2_file = "station_h2.rd50"
     rotd50_v_file = "station_v.rd50"
 
     # Trim timeseries if needed
     if cut_flag:
+        if min_i is None or max_i is None:
+            print("ERROR: Please specify both min_i and max_i values!")
+            sys.exit(-1)
         comp_h1 = comp_h1[min_i:max_i]
         comp_h2 = comp_h2[min_i:max_i]
         comp_v = comp_v[min_i:max_i]
@@ -345,11 +352,12 @@ def calculate_rd50(station, min_i, max_i, tmin, tmax, cut_flag=False):
                             comp, delta_t)
 
     # Calculate RotD50 outputs
-    run_rotd50(temp_dir, peer_fns[0], peer_fns[1], rotd50_h_file)
+    run_rotd50(temp_dir, peer_fns[0], peer_fns[0], rotd50_h1_file)
+    run_rotd50(temp_dir, peer_fns[1], peer_fns[1], rotd50_h2_file)
     run_rotd50(temp_dir, peer_fns[2], peer_fns[2], rotd50_v_file)
 
-    periods, comp1_rd50, comp2_rd50 = read_rd50(os.path.join(temp_dir,
-                                                             rotd50_h_file))
+    periods, comp1_rd50, _ = read_rd50(os.path.join(temp_dir, rotd50_h1_file))
+    _, _, comp2_rd50 = read_rd50(os.path.join(temp_dir, rotd50_h2_file))
     _, compv_rd50, _ = read_rd50(os.path.join(temp_dir, rotd50_v_file))
 
     # Find only periods we want
@@ -794,6 +802,21 @@ def filter_timeseries(timeseries, family, btype,
         print("[INFO]: Filtering timeseries: %s - %s - fmin=%.2f, fmax=%.2f" %
               (family, btype, fmin, fmax))
 
+    # Add padding if we are using a high-pass (or band-pass) filter
+    if fmin is not None and fmin > 0:
+        pad_factor = 1.5
+        tz_pad = (pad_factor * N / fmin) / timeseries.dt
+        pad_length = int(np.round(tz_pad / 2.0))
+        # Check if we have already added padding
+        if timeseries.padding < pad_length:
+            # Extra padding needed
+            zpad = np.zeros(pad_length - timeseries.padding)
+            timeseries.acc = np.concatenate((zpad, timeseries.acc, zpad))
+            timeseries.vel = np.concatenate((zpad, timeseries.vel, zpad))
+            timeseries.dis = np.concatenate((zpad, timeseries.dis, zpad))
+            timeseries.samples = timeseries.acc.size
+            timeseries.padding = pad_length
+
     timeseries.acc = filter_data(timeseries.acc, timeseries.dt,
                                  btype=btype, family=family,
                                  fmin=fmin, fmax=fmax,
@@ -893,6 +916,14 @@ def interp(data, samples, old_dt, new_dt,
         # Nothing to do!
         return data
 
+    # Quick interpolation rule for downsampling
+    if new_dt % old_dt == 0.0:
+        downsample_factor = int(new_dt // old_dt)
+        # print("[INFO]: Downsampling by factor of %d" % (downsample_factor))
+        #new_data = data[0::downsample_factor]
+        new_data = decimate(data, downsample_factor)
+        return new_data
+
     old_times = np.arange(0, samples * old_dt, old_dt)
     if old_times.size == samples + 1:
         old_times = old_times[:-1]
@@ -931,7 +962,8 @@ def interp(data, samples, old_dt, new_dt,
     return new_data
 
 def process_station_dt(station, new_dt, fmax,
-                       debug=False, debug_plots_base=None):
+                       debug=False, taper=None,
+                       debug_plots_base=None):
     """
     Process the station to set a common dt
 
@@ -951,13 +983,13 @@ def process_station_dt(station, new_dt, fmax,
         else:
             debug_orientation = station[i].orientation
         station[i] = process_timeseries_dt(station[i], new_dt,
-                                           fmax, debug=debug,
+                                           fmax, debug=debug, taper=taper,
                                            debug_plots_base="%s.%s" %
                                            (debug_plots_base,
                                             debug_orientation))
     return station
 
-def process_timeseries_dt(timeseries, new_dt, fmax,
+def process_timeseries_dt(timeseries, new_dt, fmax, taper=None,
                           debug=False, debug_plots_base=None):
     """
     Processes a timeseries by first filtering the data using a lowpass
@@ -992,6 +1024,15 @@ def process_timeseries_dt(timeseries, new_dt, fmax,
 
     timeseries.samples = timeseries.acc.size
     timeseries.dt = new_dt
+
+    # Add taper with tokey window
+    if taper is not None:
+        taper_length = taper
+        taper_percent = 1.0 * taper_length / timeseries.samples
+        window = tukey(timeseries.samples, taper_percent)
+        timeseries.acc = timeseries.acc * window
+        timeseries.vel = timeseries.vel * window
+        timeseries.dis = timeseries.dis * window
 
     # call low_pass filter at fmax
     if fmax is not None:
