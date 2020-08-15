@@ -36,6 +36,7 @@ from __future__ import division, print_function
 
 # Import Python modules
 import os
+import sys
 import argparse
 import matplotlib as mpl
 if mpl.get_backend() != 'agg':
@@ -117,7 +118,7 @@ def parse_arguments():
         args.tmin = 0.1
     if args.tmax is None:
         args.tmax = 10
-    if args.xmin >= args.xmax:
+    if args.xmin >= args.xmax and args.xmax != 0:
         print("[ERROR]: xmin must be smaller than xmax!")
         sys.exit(-1)
     if args.xfmin >= args.xfmax:
@@ -128,7 +129,8 @@ def parse_arguments():
         sys.exit(-1)
     if args.lowf is not None and args.highf is not None:
         if args.lowf >= args.highf:
-            print("[ERROR]: lowf must be smaller than highf!")
+            print("[ERROR]: low-f: %f - high-f: %f" % (args.lowf, args.highf))
+            print("[ERROR]: low-f must be smaller than high-f!")
             sys.exit(-1)
     if args.prefix is not None and args.outdir is not None:
         args.save_timeseries = True

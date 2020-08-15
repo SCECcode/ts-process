@@ -190,19 +190,25 @@ def comparison_plot(args, filenames, stations,
 
     delta_ts = [station[0].dt for station in stations]
     paddings = [station[0].padding for station in stations]
+    num_points = [station[0].samples for station in stations]
     files_vel = [os.path.basename(filename) for filename in filenames]
     files_acc = [filename.replace(".vel.", ".acc.") for filename in files_vel]
 
-    xtmin = args.xmin
-    xtmax = args.xmax
+    xtmins = [args.xmin for station in stations]
+    if args.xmax == 0:
+        xtmaxs = [delta_t * (n_points - 2 * padding - 1) for delta_t, n_points, padding in zip(delta_ts,
+                                                                                               num_points,
+                                                                                               paddings)]
+    else:
+        xtmaxs = [args.xmax for station in stations]
     xfmin = args.xfmin
     xfmax = args.xfmax
     tmin = args.tmin
     tmax = args.tmax
     acc_flag = args.acc_plots
 
-    min_is = [int(xtmin/delta_t) + padding for delta_t, padding in zip(delta_ts, paddings)]
-    max_is = [int(xtmax/delta_t) + padding for delta_t, padding in zip(delta_ts, paddings)]
+    min_is = [int(xtmin/delta_t) + padding for xtmin, delta_t, padding in zip(xtmins, delta_ts, paddings)]
+    max_is = [int(xtmax/delta_t) + padding for xtmax, delta_t, padding in zip(xtmaxs, delta_ts, paddings)]
 
     rd50s = [calculate_rd50(station, tmin, tmax) for station in stations]
 
@@ -229,6 +235,7 @@ def comparison_plot(args, filenames, stations,
         for sample, padding, max_i, delta_t in zip(samples, paddings,
                                                    max_is, delta_ts):
             if sample - padding - 1 < max_i:
+                print("sample=%f, padding=%f, max_i=%f" % (sample, padding, max_i))
                 print("[ERROR]: t_max has to be under %f" %
                       ((sample - (2 * padding) - 1) * delta_t))
                 sys.exit(1)
@@ -240,7 +247,7 @@ def comparison_plot(args, filenames, stations,
         c_accs = [acc[min_i:max_i] for acc, min_i, max_i in zip(accs,
                                                                 min_is,
                                                                 max_is)]
-        times = [np.arange(xtmin, xtmax, delta_t) for delta_t in delta_ts]
+        times = [np.arange(xtmin, xtmax, delta_t) for xtmin, xtmax, delta_t in zip(xtmins, xtmaxs, delta_ts)]
         points = get_points(samples)
 
         if acc_flag:
@@ -266,17 +273,17 @@ def comparison_plot(args, filenames, stations,
         styles = all_styles[0:len(times)]
         if acc_flag:
             for timeseries, c_acc, style in zip(times, c_accs, styles):
-                axarr[i][0].plot(timeseries, c_acc, style)
+                axarr[i][0].plot(timeseries, c_acc, style, lw=0.5)
         else:
             for timeseries, c_vel, style in zip(times, c_vels, styles):
-                axarr[i][0].plot(timeseries, c_vel, style)
+                axarr[i][0].plot(timeseries, c_vel, style, lw=0.5)
 
         if i == 0:
             if acc_flag:
                 plt.legend(files_acc, prop={'size':8})
             else:
                 plt.legend(files_vel, prop={'size':8})
-        plt.xlim(xtmin, xtmax)
+        plt.xlim(min(xtmins), max(xtmaxs))
 
         if i == 2:
             axarr[i][0].set_xlabel("Time (s)")
@@ -290,7 +297,7 @@ def comparison_plot(args, filenames, stations,
         axarr[i][1].set_xscale('log')
         axarr[i][1].set_yscale('log')
         for freq, fas, style in zip(freqs, fas_s, styles):
-            axarr[i][1].plot(freq, fas, style)
+            axarr[i][1].plot(freq, fas, style, lw=0.5)
 
         tmp_xfmin = xfmin
         if tmp_xfmin < 0.005:
@@ -305,7 +312,7 @@ def comparison_plot(args, filenames, stations,
         axarr[i][2].set_xscale('log')
         axarr[i][2].grid(True)
         for psa, period, style in zip(psas, periods, styles):
-            axarr[i][2].plot(period, psa, style)
+            axarr[i][2].plot(period, psa, style, lw=0.5)
 
         plt.xlim(tmin, tmax)
 

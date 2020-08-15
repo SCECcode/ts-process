@@ -42,7 +42,8 @@ import argparse
 from file_utilities import write_bbp, read_stamp, read_files
 from ts_library import process_station_dt, check_station_data, seism_cutting, seism_appendzeros
 
-def synchronize_all_stations(obs_data, stations, stamp, eqtimestamp, leading):
+def synchronize_all_stations(obs_data, stations, stamp,
+                             eqtimestamp, leading, sync_end_time):
     """
     synchronize the stating time and ending time of data arrays
     obs_data = recorded data (optional); stations = simulation signal(s)
@@ -93,7 +94,7 @@ def synchronize_all_stations(obs_data, stations, stamp, eqtimestamp, leading):
         target_time = min(target_time, station_time)
 
     # Work on obs_data
-    if obs_data is not None:
+    if obs_data is not None and sync_end_time:
         for i in range(0, 3):
             if obs_time > target_time:
                 obs_data[i] = seism_cutting('end', (obs_time - target_time),
@@ -102,14 +103,15 @@ def synchronize_all_stations(obs_data, stations, stamp, eqtimestamp, leading):
         obs_time = obs_dt * obs_samples
 
     # Work on simulated data
-    for station in stations:
-        for i in range(0, 3):
-            sim_dt = station[i].dt
-            sim_samples = station[i].samples
-            sim_time = sim_dt * sim_samples
-            if sim_time > target_time:
-                station[i] = seism_cutting('end', (sim_time - target_time),
-                                           20, station[i])
+    if sync_end_time:
+        for station in stations:
+            for i in range(0, 3):
+                sim_dt = station[i].dt
+                sim_samples = station[i].samples
+                sim_time = sim_dt * sim_samples
+                if sim_time > target_time:
+                    station[i] = seism_cutting('end', (sim_time - target_time),
+                                               20, station[i])
 
     # scale the data if they have one sample in difference after synchronizing
     total_samples = None
@@ -179,19 +181,21 @@ def process(obs_file, obs_data, input_files, stations, params):
                                                   stations,
                                                   stamp,
                                                   params['eq_time'],
-                                                  params['leading'])
+                                                  params['leading'],
+                                                  params['sync_end_time'])
 
-    # Check number of samples
-    if obs_data is not None:
-        num_samples = obs_data[0].samples
-    else:
-        num_samples = stations[0][0].samples
+    if params['sync_end_time']:
+        # Check number of samples
+        if obs_data is not None:
+            num_samples = obs_data[0].samples
+        else:
+            num_samples = stations[0][0].samples
 
-    for station in stations:
-        if station[0].samples != num_samples:
-            print("[ERROR]: two timseries do not have the same number"
-                  " of samples after processing.")
-            sys.exit(-1)
+        for station in stations:
+            if station[0].samples != num_samples:
+                print("[ERROR]: two timseries do not have the same number"
+                      " of samples after processing.")
+                sys.exit(-1)
 
     # Check the data
     if obs_data is not None:
@@ -231,6 +235,9 @@ def parse_arguments():
                         help="output directory for the outputs")
     parser.add_argument("--debug", dest="debug", action="store_true",
                         help="produces debug plots and outputs steps in detail")
+    parser.add_argument("--disable-sync-end-time", dest="disable_sync_end_time",
+                        default=False, action='store_true',
+                        help="Disables automatic timeseries end time sync")
     parser.add_argument('input_files', nargs='*')
     args = parser.parse_args()
 
@@ -238,17 +245,23 @@ def parse_arguments():
     files = args.input_files
     obs_file = args.obs_file
 
-    if len(files) < 1 or len(files) == 1 and obs_file is None:
-        print("[ERROR]: Please provide at least two timeseries to process!")
-        sys.exit(-1)
+    if files is None:
+        files = []
 
     # Check for missing input parameters
     params = {}
 
     if args.outdir is None:
         print("[ERROR]: Please provide output directory!")
+        sys.exit(-1)
     else:
         params['outdir'] = args.outdir
+
+    # Check if we should cut seismograms to make them all equal
+    if args.disable_sync_end_time:
+        params['sync_end_time'] = False
+    else:
+        params['sync_end_time'] = True
 
     # Check for user-provided taper window length
     if args.taper is None:
@@ -261,11 +274,13 @@ def parse_arguments():
 
     if args.targetdt is None:
         print("[ERROR]: Please provide a target DT to be used in all signals!")
+        sys.exit(-1)
     else:
         params['targetdt'] = args.targetdt
 
     if args.eq_time is None:
         print("[ERROR]: Please provide earthquake time!")
+        sys.exit(-1)
     else:
         tokens = args.eq_time.split(':')
         if len(tokens) < 3:
@@ -279,6 +294,7 @@ def parse_arguments():
 
     if args.leading is None:
         print("[ERROR]: Please enter the simulation leading time!")
+        sys.exit(-1)
     else:
         params['leading'] = args.leading
 
