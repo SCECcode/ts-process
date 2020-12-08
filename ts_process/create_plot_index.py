@@ -144,6 +144,12 @@ def create_plot_index_main():
     html_output.write("<body>\n")
     html_output.write("<h2>%s</h2>\n" % (args.title))
     html_output.write("<table>\n")
+    html_output.write("<tr>\n")
+    html_output.write("<td>Station ID</td>\n")
+    html_output.write("<td>Distance (km)</td>\n")
+    for freq in args.freqs:
+        html_output.write("<td>%sHz</td>\n" % (freq))
+    html_output.write("</tr>\n")
         
     for station in station_order:
         files = glob.glob("%s/%s*" % (plots_dir, station))
@@ -156,6 +162,7 @@ def create_plot_index_main():
         for freq in args.freqs:
             files = glob.glob("%s/%s-%s*" % (plots_dir, station, freq))
             if len(files) != 1:
+                html_output.write("<td></td>\n")
                 continue
             html_output.write('<td><a href="%s">%s</a></td>\n' %
                               (os.path.basename(files[0]), freq))
