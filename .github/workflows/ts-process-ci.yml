@@ -1,0 +1,35 @@
+name: ts-process-ci
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  bbp-build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ "3.7", "3.8", "3.9", "3.10" ]
+    steps:
+    - name: Setup Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: configure Python
+      run: |
+        sudo apt-get update
+        sudo apt-get install g++-8 -y
+        sudo apt-get install gfortran-8 -y
+        pip install numpy
+        pip install scipy
+        pip install matplotlib
+    - name: checkout ts-process main
+      uses: actions/checkout@v2
+      with:
+        ref: main
+    - name: build ts-process
+      run: ./.github/scripts/ts-process-build-ci.sh
+      shell: bash
+#    - name: test ts-process
+#      run: ./.github/scripts/ts-process-test-ci.sh
+#      shell: bash
