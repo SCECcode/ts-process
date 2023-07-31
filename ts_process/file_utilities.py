@@ -197,7 +197,7 @@ def read_file(filename):
         print("[READING]: %s" % (filename))
         return read_file_bbp(filename)
     # Unknown file format
-    print("[ERROR]: Unknown file format: %s!" % (obs_file))
+    print("[ERROR]: Unknown file format: %s!" % (filename))
     sys.exit(-1)
 # end of read_file
 
@@ -303,9 +303,9 @@ def read_file_her(filename):
     The function is to read 10-column .her files.
     Return a list of psignals for each orientation.
     """
-    time, dis_ns, dis_ew, dis_up = [np.array([], float) for _ in xrange(4)]
-    vel_ns, vel_ew, vel_up = [np.array([], float) for _ in xrange(3)]
-    acc_ns, acc_ew, acc_up = [np.array([], float) for _ in xrange(3)]
+    time, dis_ns, dis_ew, dis_up = [np.array([], float) for _ in range(4)]
+    vel_ns, vel_ew, vel_up = [np.array([], float) for _ in range(3)]
+    acc_ns, acc_ew, acc_up = [np.array([], float) for _ in range(3)]
 
     try:
         (time, dis_ns, dis_ew, dis_up, vel_ns, vel_ew,
