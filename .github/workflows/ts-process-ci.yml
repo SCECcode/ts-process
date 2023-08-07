@@ -5,8 +5,8 @@ on:
     branches: [ main ]
 
 jobs:
-  bbp-build-linux:
-    runs-on: ubuntu-latest
+  ts-process-build-linux:
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         python-version: [ "3.7", "3.8", "3.9", "3.10" ]
